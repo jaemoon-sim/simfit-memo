@@ -12,7 +12,7 @@ public enum ExerciseSeedImportError: Error, Equatable {
     case importerNotImplemented
 }
 
-public protocol ExerciseSeedImporting {
+public protocol ExerciseSeedImporting: Sendable {
     func importExercises(from data: Data, importedAt: Date) throws -> [Exercise]
 }
 
@@ -24,7 +24,7 @@ public struct ExerciseSeedService: Sendable {
         sourceURL: URL(string: "https://raw.githubusercontent.com/yuhonas/free-exercise-db/main/dist/exercises.json")!,
         license: "Unlicense",
         importedAt: Date(timeIntervalSince1970: 1_779_753_600),
-        notes: "Tiny embedded seed for scaffolding. A Free Exercise DB importer should replace or expand this list later."
+        notes: "Tiny embedded seed for scaffolding plus a text-only Free Exercise DB importer that defaults to strength exercises for MVP."
     )
 
     public init() {}
@@ -74,8 +74,14 @@ public struct ExerciseSeedService: Sendable {
     }
 
     public func importFreeExerciseDBData(_ data: Data, importedAt: Date = Date()) throws -> [Exercise] {
-        _ = data
-        _ = importedAt
-        throw ExerciseSeedImportError.importerNotImplemented
+        try importFreeExerciseDBData(data, importedAt: importedAt, importer: FreeExerciseDBExerciseSeedImporter())
+    }
+
+    public func importFreeExerciseDBData<Importer: ExerciseSeedImporting>(
+        _ data: Data,
+        importedAt: Date = Date(),
+        importer: Importer
+    ) throws -> [Exercise] {
+        try importer.importExercises(from: data, importedAt: importedAt)
     }
 }
