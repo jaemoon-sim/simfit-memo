@@ -1,0 +1,7 @@
+{
+  "sourceName": "Free Exercise DB",
+  "sourceURL": "https://raw.githubusercontent.com/yuhonas/free-exercise-db/main/dist/exercises.json",
+  "license": "Unlicense",
+  "importedAt": "2026-05-26T00:00:00Z",
+  "notes": "Foundation slice includes only a tiny embedded Swift seed. Later importer work should expand from the Free Exercise DB dist JSON."
+}
