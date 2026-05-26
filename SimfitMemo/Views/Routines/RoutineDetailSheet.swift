@@ -2,6 +2,7 @@ import SwiftUI
 
 struct RoutineDetailSheet: View {
     var routine: Routine
+    var startAction: () -> Void = {}
 
     var body: some View {
         ZStack {
@@ -22,7 +23,9 @@ struct RoutineDetailSheet: View {
             }
         }
         .safeAreaInset(edge: .bottom) {
-            PrimaryButton(title: "운동 시작하기", systemImage: "play.fill") {}
+            PrimaryButton(title: "운동 시작하기", systemImage: "play.fill") {
+                startAction()
+            }
                 .padding(.horizontal, AppTheme.horizontalPadding)
                 .padding(.top, 12)
                 .padding(.bottom, 10)

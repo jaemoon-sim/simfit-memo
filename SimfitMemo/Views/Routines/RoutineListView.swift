@@ -1,12 +1,27 @@
 import SwiftUI
 
 struct RoutineListView: View {
-    var routines: [Routine]
-    var exercises: [Exercise]
+    var providedRoutines: [Routine]?
+    var providedExercises: [Exercise]?
 
+    @EnvironmentObject private var appStore: AppDataStore
     @Environment(\.dismiss) private var dismiss
     @State private var selectedRoutine: Routine?
+    @State private var showsWorkoutMemo = false
     @State private var sortOption = RoutineSortOption.recent
+
+    init(routines: [Routine]? = nil, exercises: [Exercise]? = nil) {
+        self.providedRoutines = routines
+        self.providedExercises = exercises
+    }
+
+    private var routines: [Routine] {
+        providedRoutines ?? appStore.routines
+    }
+
+    private var exercises: [Exercise] {
+        providedExercises ?? appStore.exercises
+    }
 
     private var sortedRoutines: [Routine] {
         switch sortOption {
@@ -47,11 +62,18 @@ struct RoutineListView: View {
         .toolbar(.hidden, for: .navigationBar)
         .preferredColorScheme(.dark)
         .sheet(item: $selectedRoutine) { routine in
-            RoutineDetailSheet(routine: routine)
+            RoutineDetailSheet(routine: routine) {
+                appStore.startWorkout(from: routine)
+                selectedRoutine = nil
+                showsWorkoutMemo = true
+            }
                 .presentationDetents([.large])
                 .presentationDragIndicator(.hidden)
                 .presentationCornerRadius(AppTheme.sheetRadius)
                 .presentationBackground(AppTheme.background)
+        }
+        .navigationDestination(isPresented: $showsWorkoutMemo) {
+            WorkoutMemoView()
         }
     }
 

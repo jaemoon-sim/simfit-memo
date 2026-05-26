@@ -84,6 +84,30 @@ final class ActiveWorkoutDomainTests: XCTestCase {
         XCTAssertNil(state.currentSetID)
     }
 
+    func testStartingFromRoutineWithOnlyExerciseCreatesBlankSet() throws {
+        let routine = Routine(
+            name: "종목만 있는 루틴",
+            exercises: [
+                RoutineExercise(
+                    exerciseID: UUID(uuidString: "00000000-0000-0000-0000-000000000301")!,
+                    exerciseName: "스쿼트",
+                    bodyPart: .lowerBody,
+                    orderIndex: 0,
+                    setTargets: []
+                )
+            ]
+        )
+
+        let state = ActiveWorkoutState.starting(from: routine)
+
+        XCTAssertEqual(state.exercises.count, 1)
+        XCTAssertEqual(state.exercises[0].sets.count, 1)
+        XCTAssertNil(state.exercises[0].sets[0].targetWeightKg)
+        XCTAssertNil(state.exercises[0].sets[0].targetRepetitions)
+        XCTAssertEqual(state.exercises[0].sets[0].restSeconds, ExerciseSeedService.defaultRestSeconds)
+        XCTAssertEqual(state.currentSetID, state.exercises[0].sets[0].id)
+    }
+
     func testFinishedRecordMapsActiveWorkoutSnapshot() throws {
         var state = ActiveWorkoutState.starting(
             from: Self.makeRoutine(),

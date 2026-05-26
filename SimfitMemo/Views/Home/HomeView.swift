@@ -1,8 +1,7 @@
 import SwiftUI
 
 struct HomeView: View {
-    private let exercises = MockFitnessData.exercises
-    private let routines = MockFitnessData.routines
+    @EnvironmentObject private var appStore: AppDataStore
 
     @State private var isResting = false
 
@@ -28,6 +27,18 @@ struct HomeView: View {
             .toolbar(.hidden, for: .navigationBar)
         }
         .preferredColorScheme(.dark)
+    }
+
+    private var exercises: [Exercise] {
+        appStore.exercises
+    }
+
+    private var routines: [Routine] {
+        appStore.routines
+    }
+
+    private var todaysRecords: [WorkoutSessionRecord] {
+        appStore.records(on: Date())
     }
 
     private var monthHeader: some View {
@@ -83,7 +94,7 @@ struct HomeView: View {
                         .font(AppTheme.bodyFont(15, weight: .bold))
                         .foregroundStyle(AppTheme.secondaryText)
 
-                    Text("운동을 직접 계획해보세요!")
+                    Text(todayCardTitle)
                         .font(AppTheme.bodyFont(21, weight: .bold))
                         .foregroundStyle(AppTheme.primaryText)
                         .fixedSize(horizontal: false, vertical: true)
@@ -101,18 +112,27 @@ struct HomeView: View {
 
             HStack(spacing: 10) {
                 NavigationLink {
-                    RoutineListView(routines: routines, exercises: exercises)
+                    RoutineListView()
                 } label: {
                     OutlineButtonLabel(title: "불러오기", systemImage: "tray.and.arrow.down")
                 }
                 .buttonStyle(.plain)
 
-                NavigationLink {
-                    ExerciseSelectionView(exercises: exercises)
-                } label: {
-                    PrimaryButtonLabel(title: "운동 선택하기", systemImage: "checklist")
+                if appStore.activeWorkout == nil {
+                    NavigationLink {
+                        ExerciseSelectionView(exercises: exercises)
+                    } label: {
+                        PrimaryButtonLabel(title: "운동 선택하기", systemImage: "checklist")
+                    }
+                    .buttonStyle(.plain)
+                } else {
+                    NavigationLink {
+                        WorkoutMemoView()
+                    } label: {
+                        PrimaryButtonLabel(title: "이어서 기록하기", systemImage: "pencil")
+                    }
+                    .buttonStyle(.plain)
                 }
-                .buttonStyle(.plain)
             }
         }
         .padding(18)
@@ -122,6 +142,18 @@ struct HomeView: View {
                 .stroke(AppTheme.hairline, lineWidth: 1)
         }
         .clipShape(RoundedRectangle(cornerRadius: AppTheme.cardRadius))
+    }
+
+    private var todayCardTitle: String {
+        if appStore.activeWorkout != nil {
+            return "진행 중인 운동이 있어요"
+        }
+
+        if let latestRecord = todaysRecords.first {
+            return "\(latestRecord.exercises.count)개 운동 기록됨"
+        }
+
+        return "운동을 직접 계획해보세요!"
     }
 
     private var quickActionGrid: some View {
@@ -138,7 +170,7 @@ struct HomeView: View {
             .buttonStyle(.plain)
 
             NavigationLink {
-                RoutineListView(routines: routines, exercises: exercises)
+                RoutineListView()
             } label: {
                 HomeActionTile(
                     title: "내 루틴",

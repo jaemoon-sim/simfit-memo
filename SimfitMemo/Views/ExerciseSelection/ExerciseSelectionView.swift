@@ -3,6 +3,7 @@ import SwiftUI
 struct ExerciseSelectionView: View {
     var routineName: String?
 
+    @EnvironmentObject private var appStore: AppDataStore
     @Environment(\.dismiss) private var dismiss
     @State private var availableExercises: [Exercise]
     @State private var selectedExerciseIDs: Set<UUID> = []
@@ -14,6 +15,8 @@ struct ExerciseSelectionView: View {
     @State private var infoExercise: Exercise?
     @State private var showsCustomExerciseSheet = false
     @State private var showsSelectionConfirmation = false
+    @State private var showsWorkoutMemo = false
+    @State private var confirmationMessage = ""
 
     init(exercises: [Exercise], routineName: String? = nil) {
         self.routineName = routineName
@@ -81,20 +84,12 @@ struct ExerciseSelectionView: View {
                 primarySystemImage: "checkmark",
                 isPrimaryEnabled: !selectedExerciseIDs.isEmpty,
                 leadingAction: { showsCustomExerciseSheet = true },
-                primaryAction: { showsSelectionConfirmation = true }
+                primaryAction: { commitSelection() }
             )
         }
         .sheet(isPresented: $showsCustomExerciseSheet) {
             CustomExerciseSheet { name, bodyPart in
-                let customExercise = Exercise(
-                    name: name,
-                    localizedName: name,
-                    bodyPart: bodyPart,
-                    primaryMuscles: [bodyPart.displayName],
-                    equipment: "사용자 지정",
-                    category: "custom",
-                    isCustom: true
-                )
+                let customExercise = appStore.addCustomExercise(name: name, bodyPart: bodyPart)
                 availableExercises.insert(customExercise, at: 0)
                 selectedExerciseIDs.insert(customExercise.id)
             }
@@ -111,9 +106,16 @@ struct ExerciseSelectionView: View {
             )
         }
         .alert("선택 완료", isPresented: $showsSelectionConfirmation) {
-            Button("확인", role: .cancel) {}
+            Button("확인", role: .cancel) {
+                if routineName != nil {
+                    dismiss()
+                }
+            }
         } message: {
-            Text("\(selectedExerciseIDs.count)개 운동을 선택했습니다.")
+            Text(confirmationMessage)
+        }
+        .navigationDestination(isPresented: $showsWorkoutMemo) {
+            WorkoutMemoView()
         }
         .preferredColorScheme(.dark)
     }
@@ -200,10 +202,34 @@ struct ExerciseSelectionView: View {
     }
 
     private func toggleBookmark(for exercise: Exercise) {
+        appStore.toggleBookmark(exerciseID: exercise.id)
+
         if bookmarkedExerciseIDs.contains(exercise.id) {
             bookmarkedExerciseIDs.remove(exercise.id)
         } else {
             bookmarkedExerciseIDs.insert(exercise.id)
+        }
+
+        if let index = availableExercises.firstIndex(where: { $0.id == exercise.id }) {
+            availableExercises[index].isBookmarked.toggle()
+        }
+    }
+
+    private func commitSelection() {
+        let selectedExercises = availableExercises.filter { selectedExerciseIDs.contains($0.id) }
+        guard !selectedExercises.isEmpty else {
+            return
+        }
+
+        if let routineName {
+            let routine = appStore.createRoutine(name: routineName, exercises: selectedExercises)
+            confirmationMessage = routine == nil
+                ? "루틴을 저장하지 못했어요."
+                : "\(selectedExercises.count)개 운동으로 루틴을 저장했어요."
+            showsSelectionConfirmation = true
+        } else {
+            appStore.startWorkout(with: selectedExercises)
+            showsWorkoutMemo = true
         }
     }
 }

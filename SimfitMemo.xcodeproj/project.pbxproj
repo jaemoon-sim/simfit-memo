@@ -64,6 +64,7 @@
 		B69C01590BE3448740BA00B4 /* WorkoutRestTimerTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 6FAF7369B8E4F60613CA570A /* WorkoutRestTimerTests.swift */; };
 		B8E455EF8BA6A24710D3CEC6 /* HomePlaceholderView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1B79627778D80F212F100745 /* HomePlaceholderView.swift */; };
 		BAF1D2AB4E803C15A01FBCF4 /* Routine.swift in Sources */ = {isa = PBXBuildFile; fileRef = 59252B33F3F86B451DAAC460 /* Routine.swift */; };
+		BB3FEED8D15F827BCE381B33 /* AppDataStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4511BD185810D91D69E77DD3 /* AppDataStore.swift */; };
 		BC69E0AC33AA2920558241AE /* Exercise.swift in Sources */ = {isa = PBXBuildFile; fileRef = A52E79561EF8BA053E217F2D /* Exercise.swift */; };
 		BE89EE4F6E5DF114185ED1B7 /* ActiveWorkoutDomainTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 3291609EBD20C5DC5062AB9F /* ActiveWorkoutDomainTests.swift */; };
 		C2DAF007E5236A6D405286B3 /* WatchSyncDTOs.swift in Sources */ = {isa = PBXBuildFile; fileRef = C7188E01709531835CAEE86A /* WatchSyncDTOs.swift */; };
@@ -140,6 +141,7 @@
 		3A160B2F940DEEFAAB96799D /* AppSearchField.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppSearchField.swift; sourceTree = "<group>"; };
 		3D1662596AE0BA43BFE1E6D8 /* ActiveWorkoutStore.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ActiveWorkoutStore.swift; sourceTree = "<group>"; };
 		414C7D72D59F179501B3CE0D /* SimfitMemoApp.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SimfitMemoApp.swift; sourceTree = "<group>"; };
+		4511BD185810D91D69E77DD3 /* AppDataStore.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppDataStore.swift; sourceTree = "<group>"; };
 		4F568E3E4255551FEED696A0 /* ExerciseSeedServiceTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ExerciseSeedServiceTests.swift; sourceTree = "<group>"; };
 		4F912BE7281659CEFACD6CBC /* WatchSnapshotCache.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WatchSnapshotCache.swift; sourceTree = "<group>"; };
 		5281B80C71D74FE1B90D6D5D /* AppCheckbox.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppCheckbox.swift; sourceTree = "<group>"; };
@@ -350,6 +352,7 @@
 			isa = PBXGroup;
 			children = (
 				3D1662596AE0BA43BFE1E6D8 /* ActiveWorkoutStore.swift */,
+				4511BD185810D91D69E77DD3 /* AppDataStore.swift */,
 			);
 			path = Stores;
 			sourceTree = "<group>";
@@ -647,6 +650,7 @@
 				0319AC097129D5E156081A84 /* ActiveWorkoutStore.swift in Sources */,
 				069E58E47C66538DE8134D8E /* AppButtons.swift in Sources */,
 				B35965D88F681ECF40825DDA /* AppCheckbox.swift in Sources */,
+				BB3FEED8D15F827BCE381B33 /* AppDataStore.swift in Sources */,
 				92E358160A162125464302F2 /* AppSearchField.swift in Sources */,
 				C76B55FA33EA07BD264CEF13 /* AppTopBar.swift in Sources */,
 				95BC05487C2DDC69B1C8A8A0 /* BodyPart.swift in Sources */,

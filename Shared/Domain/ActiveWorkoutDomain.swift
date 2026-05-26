@@ -13,12 +13,16 @@ public extension ActiveWorkoutState {
         startedAt: Date = Date()
     ) -> ActiveWorkoutState {
         let exercises = routine.exercises.stablySortedByOrderIndex().map { routineExercise in
-            ActiveWorkoutExercise(
+            let setTargets = routineExercise.setTargets.isEmpty
+                ? [RoutineSetTarget(orderIndex: 0, restSeconds: ExerciseSeedService.defaultRestSeconds)]
+                : routineExercise.setTargets.stablySortedByOrderIndex()
+
+            return ActiveWorkoutExercise(
                 exerciseID: routineExercise.exerciseID,
                 exerciseName: routineExercise.exerciseName,
                 bodyPart: routineExercise.bodyPart,
                 orderIndex: routineExercise.orderIndex,
-                sets: routineExercise.setTargets.stablySortedByOrderIndex().map { target in
+                sets: setTargets.map { target in
                     ActiveWorkoutSet(
                         orderIndex: target.orderIndex,
                         targetWeightKg: target.targetWeightKg,

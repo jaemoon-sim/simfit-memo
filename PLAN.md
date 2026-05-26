@@ -401,3 +401,16 @@
   - `xcodebuild -project SimfitMemo.xcodeproj -scheme SimfitMemoUnitTests -destination 'platform=iOS Simulator,name=iPhone 17' test` 통과, 22 tests.
   - `xcodebuild -project SimfitMemo.xcodeproj -target SimfitMemo -sdk iphonesimulator build` 통과.
   - `xcodebuild -project SimfitMemo.xcodeproj -target 'SimfitMemo Watch App' -destination 'generic/platform=watchOS Simulator' build` 통과.
+
+## Implementation Progress - 2026-05-27
+
+- iOS 앱에 `SwiftData` 기반 snapshot 저장소를 추가했다. 운동 목록, 루틴, 완료 기록, 진행 중 운동 상태를 Codable snapshot으로 저장하고 앱 시작 시 복구한다.
+- 홈/루틴 목록/루틴 상세/운동 선택/운동 메모 화면을 `AppDataStore`로 연결했다. 운동 선택에서 바로 운동을 시작할 수 있고, 루틴 생성 플로우에서 선택한 운동으로 루틴을 저장할 수 있으며, 루틴 상세에서 운동 메모로 진입한다.
+- 운동 메모 화면은 샘플 전용 상태 대신 앱 전체 active workout state를 편집한다. 세트 실제 무게/횟수 입력, 세트 완료, 쉬는시간 타이머, 운동 종료 후 기록 저장이 같은 store에 반영된다.
+- 루틴에 세트 목표가 없어도 운동 시작 시 빈 세트 1개를 자동 생성하도록 도메인 규칙을 보강했다.
+- 검증 결과:
+  - `xcodegen generate` 통과.
+  - `xcodebuild -project SimfitMemo.xcodeproj -scheme SimfitMemoUnitTests -destination 'platform=iOS Simulator,name=iPhone 17' test` 통과, 23 tests.
+  - `xcodebuild -project SimfitMemo.xcodeproj -target SimfitMemo -sdk iphonesimulator build` 통과.
+  - `xcodebuild -project SimfitMemo.xcodeproj -target 'SimfitMemo Watch App' -destination 'generic/platform=watchOS Simulator' build` 통과.
+- 아직 남은 구현은 루틴별 세트 목표 편집 UI, 기록 상세 화면, WatchConnectivity와 iOS store의 실시간 연결, 실제 페어링된 Apple Watch QA다.
