@@ -15,9 +15,9 @@ struct NewRoutineView: View {
             AppTheme.background.ignoresSafeArea()
 
             VStack(alignment: .leading, spacing: 28) {
-                AppTopBar(title: "새로운 루틴 만들기", showsBackButton: true) {
+                AppTopBar(title: "새로운 루틴 만들기", showsBackButton: true, leadingAction: {
                     dismiss()
-                }
+                })
                 .padding(.horizontal, AppTheme.horizontalPadding)
                 .padding(.top, AppTheme.screenTopPadding)
 

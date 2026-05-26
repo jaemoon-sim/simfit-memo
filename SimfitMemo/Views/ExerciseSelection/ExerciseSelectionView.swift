@@ -16,6 +16,7 @@ struct ExerciseSelectionView: View {
     @State private var showsCustomExerciseSheet = false
     @State private var showsSelectionConfirmation = false
     @State private var showsWorkoutMemo = false
+    @State private var editingRoutine: Routine?
     @State private var confirmationMessage = ""
 
     init(exercises: [Exercise], routineName: String? = nil) {
@@ -61,9 +62,9 @@ struct ExerciseSelectionView: View {
 
             ScrollView(showsIndicators: false) {
                 VStack(alignment: .leading, spacing: 16) {
-                    AppTopBar(title: routineName ?? "운동 선택", showsBackButton: true) {
+                    AppTopBar(title: routineName ?? "운동 선택", showsBackButton: true, leadingAction: {
                         dismiss()
-                    }
+                    })
 
                     AppSearchField(placeholder: "운동 검색", text: $searchText)
 
@@ -117,7 +118,23 @@ struct ExerciseSelectionView: View {
         .navigationDestination(isPresented: $showsWorkoutMemo) {
             WorkoutMemoView()
         }
+        .navigationDestination(isPresented: editingRoutineBinding) {
+            if let editingRoutine {
+                RoutineTargetEditorView(routine: editingRoutine)
+            }
+        }
         .preferredColorScheme(.dark)
+    }
+
+    private var editingRoutineBinding: Binding<Bool> {
+        Binding(
+            get: { editingRoutine != nil },
+            set: { isPresented in
+                if !isPresented {
+                    editingRoutine = nil
+                }
+            }
+        )
     }
 
     private var categoryChips: some View {
@@ -222,11 +239,12 @@ struct ExerciseSelectionView: View {
         }
 
         if let routineName {
-            let routine = appStore.createRoutine(name: routineName, exercises: selectedExercises)
-            confirmationMessage = routine == nil
-                ? "루틴을 저장하지 못했어요."
-                : "\(selectedExercises.count)개 운동으로 루틴을 저장했어요."
-            showsSelectionConfirmation = true
+            if let routine = appStore.createRoutine(name: routineName, exercises: selectedExercises) {
+                editingRoutine = routine
+            } else {
+                confirmationMessage = "루틴을 저장하지 못했어요."
+                showsSelectionConfirmation = true
+            }
         } else {
             appStore.startWorkout(with: selectedExercises)
             showsWorkoutMemo = true

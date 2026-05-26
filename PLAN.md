@@ -414,3 +414,17 @@
   - `xcodebuild -project SimfitMemo.xcodeproj -target SimfitMemo -sdk iphonesimulator build` 통과.
   - `xcodebuild -project SimfitMemo.xcodeproj -target 'SimfitMemo Watch App' -destination 'generic/platform=watchOS Simulator' build` 통과.
 - 아직 남은 구현은 루틴별 세트 목표 편집 UI, 기록 상세 화면, WatchConnectivity와 iOS store의 실시간 연결, 실제 페어링된 Apple Watch QA다.
+
+## Implementation Progress - 2026-05-27 Continued
+
+- 루틴 세트 목표 편집 화면을 추가했다. 루틴 이름, 운동별 세트 수, 목표 무게, 목표 횟수, 쉬는시간을 편집해 저장할 수 있다.
+- 루틴 목록 카드 메뉴에서 편집, 복제, 삭제를 연결했고 루틴 상세 바텀시트의 `편집` 액션도 목표 편집 화면으로 이어진다.
+- 새 루틴 생성 플로우는 운동 선택 직후 목표 편집 화면으로 이동해 종목만 만든 뒤 바로 세트 목표를 다듬을 수 있게 했다.
+- 홈 화면에 최근 운동 기록 목록을 추가하고, 완료 기록 상세 화면에서 운동별 세트 결과와 목표값을 조회할 수 있게 했다.
+- iOS 앱 root에서 `WatchSyncService`와 `AppDataStore`를 연결했다. active workout, 루틴, 기록 변경 시 Watch snapshot을 전송하고, Watch에서 들어온 세트 완료 이벤트를 iOS active workout에 반영한다.
+- 검증 결과:
+  - `xcodegen generate` 통과.
+  - `xcodebuild -project SimfitMemo.xcodeproj -scheme SimfitMemoUnitTests -destination 'platform=iOS Simulator,name=iPhone 17' test` 통과, 23 tests.
+  - `xcodebuild -project SimfitMemo.xcodeproj -target SimfitMemo -sdk iphonesimulator build` 통과.
+  - `xcodebuild -project SimfitMemo.xcodeproj -target 'SimfitMemo Watch App' -destination 'generic/platform=watchOS Simulator' build` 통과.
+- 남은 검증/구현은 실제 iPhone + Apple Watch 페어링 환경에서 WatchConnectivity/HealthKit 수동 QA, 그리고 더 고급 기록 필터/통계다.

@@ -3,6 +3,7 @@ import SwiftUI
 struct RoutineDetailSheet: View {
     var routine: Routine
     var startAction: () -> Void = {}
+    var editAction: () -> Void = {}
 
     var body: some View {
         ZStack {
@@ -10,7 +11,7 @@ struct RoutineDetailSheet: View {
 
             ScrollView(showsIndicators: false) {
                 VStack(spacing: 20) {
-                    BottomSheetHeader(title: routine.name, actionTitle: "편집") {}
+                    BottomSheetHeader(title: routine.name, actionTitle: "편집", action: editAction)
 
                     VStack(spacing: 10) {
                         ForEach(routine.exercises.sorted { $0.orderIndex < $1.orderIndex }) { exercise in

@@ -3,6 +3,9 @@ import SwiftUI
 struct RoutineCard: View {
     var routine: Routine
     var onTap: () -> Void
+    var onEdit: () -> Void = {}
+    var onDuplicate: () -> Void = {}
+    var onDelete: () -> Void = {}
 
     private var bodyPartSummary: String {
         var orderedParts: [String] = []
@@ -68,9 +71,9 @@ struct RoutineCard: View {
             .buttonStyle(.plain)
 
             Menu {
-                Button("이름 변경") {}
-                Button("복제") {}
-                Button("삭제", role: .destructive) {}
+                Button("편집", action: onEdit)
+                Button("복제", action: onDuplicate)
+                Button("삭제", role: .destructive, action: onDelete)
             } label: {
                 Image(systemName: "ellipsis")
                     .font(.system(size: 17, weight: .bold))

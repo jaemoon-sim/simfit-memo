@@ -7,6 +7,7 @@ struct RoutineListView: View {
     @EnvironmentObject private var appStore: AppDataStore
     @Environment(\.dismiss) private var dismiss
     @State private var selectedRoutine: Routine?
+    @State private var editingRoutine: Routine?
     @State private var showsWorkoutMemo = false
     @State private var sortOption = RoutineSortOption.recent
 
@@ -48,10 +49,26 @@ struct RoutineListView: View {
 
                     VStack(spacing: 12) {
                         ForEach(sortedRoutines) { routine in
-                            RoutineCard(routine: routine) {
-                                selectedRoutine = routine
-                            }
+                            RoutineCard(
+                                routine: routine,
+                                onTap: {
+                                    selectedRoutine = routine
+                                },
+                                onEdit: {
+                                    editingRoutine = routine
+                                },
+                                onDuplicate: {
+                                    appStore.duplicateRoutine(id: routine.id)
+                                },
+                                onDelete: {
+                                    appStore.deleteRoutine(id: routine.id)
+                                }
+                            )
                         }
+                    }
+
+                    if sortedRoutines.isEmpty {
+                        emptyState
                     }
                 }
                 .padding(.horizontal, AppTheme.horizontalPadding)
@@ -62,11 +79,19 @@ struct RoutineListView: View {
         .toolbar(.hidden, for: .navigationBar)
         .preferredColorScheme(.dark)
         .sheet(item: $selectedRoutine) { routine in
-            RoutineDetailSheet(routine: routine) {
-                appStore.startWorkout(from: routine)
-                selectedRoutine = nil
-                showsWorkoutMemo = true
-            }
+            RoutineDetailSheet(
+                routine: currentRoutine(matching: routine) ?? routine,
+                startAction: {
+                    let latestRoutine = currentRoutine(matching: routine) ?? routine
+                    appStore.startWorkout(from: latestRoutine)
+                    selectedRoutine = nil
+                    showsWorkoutMemo = true
+                },
+                editAction: {
+                    editingRoutine = currentRoutine(matching: routine) ?? routine
+                    selectedRoutine = nil
+                }
+            )
                 .presentationDetents([.large])
                 .presentationDragIndicator(.hidden)
                 .presentationCornerRadius(AppTheme.sheetRadius)
@@ -75,13 +100,54 @@ struct RoutineListView: View {
         .navigationDestination(isPresented: $showsWorkoutMemo) {
             WorkoutMemoView()
         }
+        .navigationDestination(isPresented: editingRoutineBinding) {
+            if let editingRoutine {
+                RoutineTargetEditorView(routine: currentRoutine(matching: editingRoutine) ?? editingRoutine)
+            }
+        }
+    }
+
+    private var editingRoutineBinding: Binding<Bool> {
+        Binding(
+            get: { editingRoutine != nil },
+            set: { isPresented in
+                if !isPresented {
+                    editingRoutine = nil
+                }
+            }
+        )
+    }
+
+    private var emptyState: some View {
+        VStack(spacing: 12) {
+            Image(systemName: "list.bullet.rectangle")
+                .font(.system(size: 24, weight: .bold))
+                .foregroundStyle(AppTheme.tertiaryText)
+            Text("저장된 루틴이 없어요")
+                .font(AppTheme.bodyFont(16, weight: .bold))
+                .foregroundStyle(AppTheme.secondaryText)
+            NavigationLink {
+                NewRoutineView(exercises: exercises)
+            } label: {
+                PrimaryButtonLabel(title: "새 루틴 만들기", systemImage: "plus")
+            }
+            .buttonStyle(.plain)
+        }
+        .frame(maxWidth: .infinity, minHeight: 180)
+        .padding(18)
+        .background(AppTheme.surface)
+        .clipShape(RoundedRectangle(cornerRadius: AppTheme.cardRadius))
+    }
+
+    private func currentRoutine(matching routine: Routine) -> Routine? {
+        routines.first { $0.id == routine.id }
     }
 
     private var topBar: some View {
         ZStack {
-            AppTopBar(title: "루틴", showsBackButton: true) {
+            AppTopBar(title: "루틴", showsBackButton: true, leadingAction: {
                 dismiss()
-            }
+            })
 
             HStack {
                 Spacer()

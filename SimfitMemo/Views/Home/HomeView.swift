@@ -16,6 +16,7 @@ struct HomeView: View {
                         dateStrip
                         recordTitle
                         todayWorkoutCard
+                        historySection
                         quickActionGrid
                         restAffordance
                     }
@@ -39,6 +40,10 @@ struct HomeView: View {
 
     private var todaysRecords: [WorkoutSessionRecord] {
         appStore.records(on: Date())
+    }
+
+    private var recentRecords: [WorkoutSessionRecord] {
+        Array(appStore.history.prefix(5))
     }
 
     private var monthHeader: some View {
@@ -182,6 +187,36 @@ struct HomeView: View {
         }
     }
 
+    @ViewBuilder
+    private var historySection: some View {
+        if !recentRecords.isEmpty {
+            VStack(alignment: .leading, spacing: 10) {
+                HStack {
+                    Text("최근 기록")
+                        .font(AppTheme.bodyFont(17, weight: .bold))
+                        .foregroundStyle(AppTheme.primaryText)
+
+                    Spacer()
+
+                    Text("\(appStore.history.count)개")
+                        .font(AppTheme.bodyFont(13, weight: .bold))
+                        .foregroundStyle(AppTheme.secondaryText)
+                }
+
+                VStack(spacing: 10) {
+                    ForEach(recentRecords) { record in
+                        NavigationLink {
+                            WorkoutHistoryDetailView(record: record)
+                        } label: {
+                            HomeHistoryRow(record: record)
+                        }
+                        .buttonStyle(.plain)
+                    }
+                }
+            }
+        }
+    }
+
     private var restAffordance: some View {
         Button {
             isResting.toggle()
@@ -289,5 +324,58 @@ private struct HomeActionTile: View {
                 .stroke(AppTheme.hairline, lineWidth: 1)
         }
         .clipShape(RoundedRectangle(cornerRadius: AppTheme.cardRadius))
+    }
+}
+
+private struct HomeHistoryRow: View {
+    let record: WorkoutSessionRecord
+
+    var body: some View {
+        HStack(spacing: 12) {
+            Image(systemName: "checkmark.circle.fill")
+                .font(.system(size: 19, weight: .bold))
+                .foregroundStyle(AppTheme.primaryBlue)
+                .frame(width: 42, height: 42)
+                .background(AppTheme.softBlue.opacity(0.22))
+                .clipShape(RoundedRectangle(cornerRadius: AppTheme.cardRadius))
+
+            VStack(alignment: .leading, spacing: 4) {
+                Text(record.routineName ?? "자유 운동")
+                    .font(AppTheme.bodyFont(15, weight: .bold))
+                    .foregroundStyle(AppTheme.primaryText)
+                    .lineLimit(1)
+
+                Text("\(record.exercises.count)개 운동 · \(completedSetCount)세트 · \(dateText)")
+                    .font(AppTheme.bodyFont(12, weight: .semibold))
+                    .foregroundStyle(AppTheme.secondaryText)
+                    .lineLimit(1)
+            }
+
+            Spacer()
+
+            Image(systemName: "chevron.right")
+                .font(.system(size: 12, weight: .bold))
+                .foregroundStyle(AppTheme.tertiaryText)
+        }
+        .padding(14)
+        .background(AppTheme.surface)
+        .overlay {
+            RoundedRectangle(cornerRadius: AppTheme.cardRadius)
+                .stroke(AppTheme.hairline, lineWidth: 1)
+        }
+        .clipShape(RoundedRectangle(cornerRadius: AppTheme.cardRadius))
+    }
+
+    private var completedSetCount: Int {
+        record.exercises.reduce(0) { total, exercise in
+            total + exercise.sets.filter { $0.completedAt != nil }.count
+        }
+    }
+
+    private var dateText: String {
+        let formatter = DateFormatter()
+        formatter.locale = Locale(identifier: "ko_KR")
+        formatter.dateFormat = "M월 d일"
+        return formatter.string(from: record.startedAt)
     }
 }

@@ -121,6 +121,58 @@ final class AppDataStore: ObservableObject {
     }
 
     @discardableResult
+    func updateRoutine(_ routine: Routine, now: Date = Date()) -> Routine? {
+        guard let index = routines.firstIndex(where: { $0.id == routine.id }) else {
+            return nil
+        }
+
+        var updatedRoutine = routine
+        updatedRoutine.updatedAt = now
+        routines[index] = updatedRoutine
+        persist()
+        return updatedRoutine
+    }
+
+    func deleteRoutine(id: UUID) {
+        routines.removeAll { $0.id == id }
+        persist()
+    }
+
+    @discardableResult
+    func duplicateRoutine(id: UUID, now: Date = Date()) -> Routine? {
+        guard let routine = routines.first(where: { $0.id == id }) else {
+            return nil
+        }
+
+        let duplicatedExercises = routine.exercises.enumerated().map { index, exercise in
+            RoutineExercise(
+                exerciseID: exercise.exerciseID,
+                exerciseName: exercise.exerciseName,
+                bodyPart: exercise.bodyPart,
+                orderIndex: index,
+                setTargets: exercise.setTargets.enumerated().map { setIndex, target in
+                    RoutineSetTarget(
+                        orderIndex: setIndex,
+                        targetWeightKg: target.targetWeightKg,
+                        targetRepetitions: target.targetRepetitions,
+                        restSeconds: target.restSeconds
+                    )
+                }
+            )
+        }
+
+        let duplicatedRoutine = Routine(
+            name: "\(routine.name) 복사본",
+            exercises: duplicatedExercises,
+            createdAt: now,
+            updatedAt: now
+        )
+        routines.insert(duplicatedRoutine, at: 0)
+        persist()
+        return duplicatedRoutine
+    }
+
+    @discardableResult
     func startWorkout(from routine: Routine, startedAt: Date = Date()) -> ActiveWorkoutState {
         let state = ActiveWorkoutState.starting(from: routine, startedAt: startedAt)
         activeWorkout = state
@@ -270,6 +322,19 @@ final class AppDataStore: ObservableObject {
         }
 
         return result
+    }
+
+    @discardableResult
+    func applyWatchSetCompletion(_ event: SetCompletionEventDTO) -> ActiveWorkoutSetCompletionResult {
+        guard activeWorkout?.id == event.sessionID else {
+            return .setNotFound
+        }
+
+        return completeActiveSet(
+            exerciseID: event.exerciseID,
+            setID: event.setID,
+            completedAt: event.completedAt
+        )
     }
 
     @discardableResult
