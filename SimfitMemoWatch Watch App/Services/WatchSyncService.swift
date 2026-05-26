@@ -182,7 +182,7 @@ final class WatchSyncService: NSObject, ObservableObject {
             self.pendingEventCount = 0
 
             for event in events {
-                self.deliver(.setCompletion(event), eventForRetry: event)
+                _ = self.deliver(.setCompletion(event), eventForRetry: event)
             }
         }
     }
@@ -280,6 +280,16 @@ extension WatchSyncService: WCSessionDelegate {
     func session(_ session: WCSession, didReceiveUserInfo userInfo: [String: Any] = [:]) {
         receive(userInfo)
     }
+
+    #if os(iOS)
+    func sessionDidBecomeInactive(_ session: WCSession) {
+        publishConnectionState(.inactive)
+    }
+
+    func sessionDidDeactivate(_ session: WCSession) {
+        session.activate()
+    }
+    #endif
 }
 
 private struct ActiveSetContext {

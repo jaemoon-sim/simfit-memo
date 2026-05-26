@@ -390,3 +390,14 @@
 - 앱 아이콘.
 - 운동 자세 아이콘/썸네일은 MVP 이후에 다시 결정한다.
 - Watch에서 기록 상세를 어디까지 압축해서 보여줄지.
+
+## Dispatch Progress - 2026-05-27
+
+- `main`에 XcodeGen 기반 iOS/watchOS 프로젝트 스캐폴딩, shared Codable 모델/DTO, Free Exercise DB seed importer, active workout domain, dark-first iOS UI shell, WatchConnectivity/HealthKit watch shell을 통합했다.
+- 서브 작업은 foundation, iOS UI, seed importer, workout core, watch sync로 나눠 진행했다. workout core와 watch sync worker는 중간에 agent limit로 종료됐지만, 남아 있던 커밋/변경을 main에 통합했다.
+- 현재 구현은 제품 골격과 compile 가능한 MVP shell 단계다. SwiftData 영속화, 실제 루틴 생성/편집 저장 흐름, 홈/루틴/운동 메모 간 상태 연결, 실제 페어링 기기 Watch QA는 아직 남아 있다.
+- 검증 결과:
+  - `xcodegen generate` 통과.
+  - `xcodebuild -project SimfitMemo.xcodeproj -scheme SimfitMemoUnitTests -destination 'platform=iOS Simulator,name=iPhone 17' test` 통과, 22 tests.
+  - `xcodebuild -project SimfitMemo.xcodeproj -target SimfitMemo -sdk iphonesimulator build` 통과.
+  - `xcodebuild -project SimfitMemo.xcodeproj -target 'SimfitMemo Watch App' -destination 'generic/platform=watchOS Simulator' build` 통과.
