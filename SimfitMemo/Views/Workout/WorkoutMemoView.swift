@@ -1,7 +1,16 @@
 import SwiftUI
+#if canImport(UIKit)
+import UIKit
+#endif
 
 struct WorkoutMemoView: View {
     @EnvironmentObject private var appStore: AppDataStore
+    @EnvironmentObject private var watchSyncService: WatchSyncService
+    @State private var isAddingExercises = false
+    @State private var isReorderingExercises = false
+    @State private var finishedWorkoutAlert: FinishedWorkoutAlert?
+    @State private var latestWatchTransferResult: WatchSyncDeliveryResult?
+    @State private var restCountdownCueTracker = RestCountdownCueTracker()
 
     var body: some View {
         ZStack {
@@ -21,9 +30,35 @@ struct WorkoutMemoView: View {
                 .padding(.top, 18)
                 .padding(.bottom, 96)
             }
+            .scrollDismissesKeyboard(.interactively)
         }
+        .background(KeyboardDismissTapInstaller {
+            dismissKeyboard()
+        })
         .safeAreaInset(edge: .bottom) {
             bottomActionBar
+        }
+        .navigationDestination(isPresented: $isAddingExercises) {
+            ExerciseSelectionView(
+                exercises: appStore.exercises,
+                selectionTitle: "운동 추가"
+            ) { selectedExercises in
+                for exercise in selectedExercises {
+                    appStore.addExerciseToActiveWorkout(exercise)
+                }
+            }
+        }
+        .alert(item: $finishedWorkoutAlert) { summary in
+            Alert(
+                title: Text("운동 완료"),
+                message: Text("총 운동시간 \(summary.durationText)\n\(summary.completedSetCount)세트 기록했어요."),
+                dismissButton: .default(Text("확인"))
+            )
+        }
+        .onChange(of: appStore.activeWorkout?.id) { _, activeWorkoutID in
+            if activeWorkoutID == nil {
+                isReorderingExercises = false
+            }
         }
         .preferredColorScheme(.dark)
     }
@@ -35,9 +70,7 @@ struct WorkoutMemoView: View {
                     Text("운동 메모")
                         .font(.system(size: 31, weight: .bold))
                         .foregroundStyle(AppTheme.primaryText)
-                    Text(appStore.activeWorkout?.routineName ?? "자유 운동")
-                        .font(.system(size: 15, weight: .semibold))
-                        .foregroundStyle(AppTheme.secondaryText)
+                    workoutSubtitle
                 }
 
                 Spacer()
@@ -46,6 +79,10 @@ struct WorkoutMemoView: View {
             }
 
             restSummary
+
+            if appStore.activeWorkout != nil {
+                watchTransferControl
+            }
         }
     }
 
@@ -70,9 +107,30 @@ struct WorkoutMemoView: View {
         }
     }
 
+    @ViewBuilder
+    private var workoutSubtitle: some View {
+        if let activeWorkout = appStore.activeWorkout {
+            TimelineView(.periodic(from: Date(), by: 1)) { context in
+                Text("\(activeWorkout.routineName ?? "자유 운동") · \(Self.formattedWorkoutDuration(activeWorkout.elapsedWorkoutSeconds(now: context.date))) 경과")
+                    .font(.system(size: 15, weight: .semibold))
+                    .foregroundStyle(AppTheme.secondaryText)
+                    .monospacedDigit()
+            }
+        } else {
+            Text("자유 운동")
+                .font(.system(size: 15, weight: .semibold))
+                .foregroundStyle(AppTheme.secondaryText)
+        }
+    }
+
     private var restSummary: some View {
         TimelineView(.periodic(from: Date(), by: 1)) { context in
+            let activeWorkout = appStore.activeWorkout
             let remaining = appStore.remainingRestSeconds(now: context.date)
+            let cueSnapshot = RestCountdownCueSnapshot(
+                restStartedAt: activeWorkout?.restStartedAt ?? activeWorkout?.restEndAt,
+                remainingSeconds: remaining
+            )
 
             HStack(spacing: 12) {
                 Image(systemName: remaining > 0 ? "timer" : "checkmark.circle")
@@ -93,6 +151,18 @@ struct WorkoutMemoView: View {
             .padding(16)
             .background(AppTheme.surface)
             .clipShape(RoundedRectangle(cornerRadius: AppTheme.cardRadius))
+            .onAppear {
+                playRestCountdownCues(for: cueSnapshot)
+            }
+            .onChange(of: cueSnapshot) { _, cueSnapshot in
+                playRestCountdownCues(for: cueSnapshot)
+            }
+        }
+    }
+
+    private func playRestCountdownCues(for snapshot: RestCountdownCueSnapshot) {
+        for cue in restCountdownCueTracker.cues(for: snapshot) {
+            RestCountdownSoundPlayer.play(cue)
         }
     }
 
@@ -112,25 +182,95 @@ struct WorkoutMemoView: View {
         return "세트를 완료하면 타이머가 시작돼요"
     }
 
+    private var watchTransferControl: some View {
+        HStack(spacing: 12) {
+            Image(systemName: "applewatch")
+                .font(.system(size: 20, weight: .bold))
+                .foregroundStyle(AppTheme.primaryBlue)
+                .frame(width: 42, height: 42)
+                .background(AppTheme.elevatedSurface)
+                .clipShape(RoundedRectangle(cornerRadius: 8))
+
+            VStack(alignment: .leading, spacing: 3) {
+                Text("Watch 전송")
+                    .font(.system(size: 16, weight: .bold))
+                    .foregroundStyle(AppTheme.primaryText)
+
+                Text(latestWatchTransferResult?.phoneDisplayText ?? "현재 운동 상태를 워치로 보냅니다")
+                    .font(.system(size: 13, weight: .medium))
+                    .foregroundStyle(AppTheme.secondaryText)
+                    .lineLimit(2)
+            }
+
+            Spacer(minLength: 8)
+
+            Button {
+                sendCurrentStateToWatch()
+            } label: {
+                Text("전송")
+                    .font(.system(size: 14, weight: .bold))
+                    .foregroundStyle(Color.white)
+                    .padding(.horizontal, 16)
+                    .frame(height: 38)
+                    .background(AppTheme.primaryBlue)
+                    .clipShape(RoundedRectangle(cornerRadius: 8))
+            }
+            .buttonStyle(.plain)
+        }
+        .padding(14)
+        .background(AppTheme.surface)
+        .clipShape(RoundedRectangle(cornerRadius: AppTheme.cardRadius))
+    }
+
+    private func sendCurrentStateToWatch() {
+        latestWatchTransferResult = watchSyncService.sendFullSnapshot(
+            activeWorkout: appStore.activeWorkout,
+            routines: appStore.routines,
+            history: appStore.history
+        )
+    }
+
     private func activeWorkoutContent(_ state: ActiveWorkoutState) -> some View {
-        VStack(alignment: .leading, spacing: 14) {
-            ForEach(state.exercises) { exercise in
-                WorkoutExerciseSectionView(appStore: appStore, exercise: exercise)
+        let orderedExercises = state.exercises.sortedByWorkoutOrder()
+
+        return VStack(alignment: .leading, spacing: 14) {
+            if orderedExercises.count > 1 {
+                HStack {
+                    Spacer()
+
+                    Button {
+                        withAnimation(.snappy) {
+                            isReorderingExercises.toggle()
+                        }
+                        dismissKeyboard()
+                    } label: {
+                        Label(isReorderingExercises ? "완료" : "순서 변경", systemImage: "arrow.up.arrow.down")
+                            .font(.system(size: 14, weight: .bold))
+                            .foregroundStyle(isReorderingExercises ? AppTheme.primaryText : AppTheme.primaryBlue)
+                            .padding(.horizontal, 12)
+                            .frame(height: 36)
+                            .background(AppTheme.surface)
+                            .clipShape(RoundedRectangle(cornerRadius: 8))
+                    }
+                    .buttonStyle(.plain)
+                }
+            }
+
+            ForEach(Array(orderedExercises.enumerated()), id: \.element.id) { index, exercise in
+                WorkoutExerciseSectionView(
+                    appStore: appStore,
+                    exercise: exercise,
+                    isReordering: isReorderingExercises,
+                    canMoveUp: index > 0,
+                    canMoveDown: index < orderedExercises.count - 1
+                )
             }
         }
     }
 
-    private var addExerciseMenu: some View {
-        Menu {
-            ForEach(appStore.exercises) { exercise in
-                Button(exercise.displayName) {
-                    if appStore.activeWorkout == nil {
-                        appStore.startEmptyWorkout()
-                    }
-
-                    appStore.addExerciseToActiveWorkout(exercise)
-                }
-            }
+    private var addExerciseButton: some View {
+        Button {
+            isAddingExercises = true
         } label: {
             Label("운동 추가", systemImage: "plus")
                 .font(.system(size: 16, weight: .bold))
@@ -139,6 +279,7 @@ struct WorkoutMemoView: View {
                 .background(AppTheme.elevatedSurface)
                 .clipShape(RoundedRectangle(cornerRadius: AppTheme.cardRadius))
         }
+        .buttonStyle(.plain)
     }
 
     private var finishedOrEmptyContent: some View {
@@ -170,10 +311,12 @@ struct WorkoutMemoView: View {
     private var bottomActionBar: some View {
         HStack(spacing: 12) {
             if let state = appStore.activeWorkout {
-                addExerciseMenu
+                addExerciseButton
 
                 Button {
-                    appStore.finishActiveWorkout()
+                    if let record = appStore.finishActiveWorkout() {
+                        finishedWorkoutAlert = FinishedWorkoutAlert(record: record)
+                    }
                 } label: {
                     Text("운동 종료")
                         .font(.system(size: 16, weight: .bold))
@@ -207,11 +350,81 @@ struct WorkoutMemoView: View {
         let seconds = seconds % 60
         return String(format: "%d:%02d", minutes, seconds)
     }
+
+    fileprivate static func formattedWorkoutDuration(_ seconds: Int) -> String {
+        let clampedSeconds = max(0, seconds)
+        let hours = clampedSeconds / 3_600
+        let minutes = (clampedSeconds % 3_600) / 60
+        let seconds = clampedSeconds % 60
+
+        if hours > 0 {
+            return String(format: "%d:%02d:%02d", hours, minutes, seconds)
+        }
+
+        return String(format: "%d:%02d", minutes, seconds)
+    }
+
+    private func dismissKeyboard() {
+        #if canImport(UIKit)
+        UIApplication.shared.sendAction(#selector(UIResponder.resignFirstResponder), to: nil, from: nil, for: nil)
+        #endif
+    }
+}
+
+private struct FinishedWorkoutAlert: Identifiable {
+    let id: UUID
+    let durationText: String
+    let completedSetCount: Int
+
+    init(record: WorkoutSessionRecord) {
+        id = record.id
+        durationText = WorkoutMemoView.formattedWorkoutDuration(record.workoutDurationSeconds())
+        completedSetCount = record.completedSetCount
+    }
+}
+
+private extension WatchSyncDeliveryResult {
+    var phoneDisplayText: String {
+        switch self {
+        case .sentLive:
+            return "워치로 즉시 전송했습니다"
+        case .queuedApplicationContext:
+            return "워치가 열리면 최신 상태로 반영됩니다"
+        case .queuedUserInfo:
+            return "연결되면 워치로 전송됩니다"
+        case .unavailable:
+            return "워치 연결을 확인해주세요"
+        case .failed:
+            return "전송에 실패했습니다"
+        }
+    }
+}
+
+@MainActor
+private enum RestCountdownSoundPlayer {
+    static func play(_ cue: RestCountdownCue) {
+        switch cue {
+        case .tenSeconds, .finalCountdown:
+            HeadsetOnlyBeepPlayer.playBeep()
+            playHaptic()
+        }
+    }
+
+    private static func playHaptic() {
+        #if canImport(UIKit)
+        let generator = UIImpactFeedbackGenerator(style: .medium)
+        generator.prepare()
+        generator.impactOccurred()
+        #endif
+    }
 }
 
 private struct WorkoutExerciseSectionView: View {
     @ObservedObject var appStore: AppDataStore
     let exercise: ActiveWorkoutExercise
+    let isReordering: Bool
+    let canMoveUp: Bool
+    let canMoveDown: Bool
 
     var body: some View {
         VStack(alignment: .leading, spacing: 0) {
@@ -233,6 +446,13 @@ private struct WorkoutExerciseSectionView: View {
                 }
 
                 Spacer()
+
+                if isReordering {
+                    HStack(spacing: 8) {
+                        reorderButton(systemName: "chevron.up", direction: .up, isEnabled: canMoveUp)
+                        reorderButton(systemName: "chevron.down", direction: .down, isEnabled: canMoveDown)
+                    }
+                }
             }
             .padding(16)
 
@@ -241,7 +461,16 @@ private struct WorkoutExerciseSectionView: View {
 
             VStack(spacing: 0) {
                 ForEach(exercise.sets) { set in
-                    WorkoutSetRowView(appStore: appStore, exercise: exercise, set: set)
+                    WorkoutSetRowView(
+                        appStore: appStore,
+                        exercise: exercise,
+                        set: set,
+                        previousPerformance: appStore.history.latestSetPerformance(
+                            matching: exercise,
+                            setOrderIndex: set.orderIndex,
+                            before: appStore.activeWorkout?.startedAt
+                        )
+                    )
 
                     if set.id != exercise.sets.last?.id {
                         Divider()
@@ -263,12 +492,34 @@ private struct WorkoutExerciseSectionView: View {
         .background(AppTheme.surface)
         .clipShape(RoundedRectangle(cornerRadius: AppTheme.cardRadius))
     }
+
+    private func reorderButton(
+        systemName: String,
+        direction: ActiveWorkoutExerciseMoveDirection,
+        isEnabled: Bool
+    ) -> some View {
+        Button {
+            withAnimation(.snappy) {
+                _ = appStore.moveActiveWorkoutExercise(exerciseID: exercise.id, direction: direction)
+            }
+        } label: {
+            Image(systemName: systemName)
+                .font(.system(size: 16, weight: .bold))
+                .foregroundStyle(isEnabled ? AppTheme.primaryBlue : AppTheme.secondaryText.opacity(0.45))
+                .frame(width: 36, height: 36)
+                .background(AppTheme.elevatedSurface)
+                .clipShape(RoundedRectangle(cornerRadius: 8))
+        }
+        .buttonStyle(.plain)
+        .disabled(!isEnabled)
+    }
 }
 
 private struct WorkoutSetRowView: View {
     @ObservedObject var appStore: AppDataStore
     let exercise: ActiveWorkoutExercise
     let set: ActiveWorkoutSet
+    let previousPerformance: PreviousWorkoutSetPerformance?
 
     var body: some View {
         HStack(spacing: 10) {
@@ -321,7 +572,27 @@ private struct WorkoutSetRowView: View {
         case (.none, .some(let reps)):
             return "목표 \(reps)"
         case (.none, .none):
-            return "목표 없음"
+            return previousPerformanceText ?? "목표 없음"
+        }
+    }
+
+    private var previousPerformanceText: String? {
+        guard let previousPerformance else {
+            return nil
+        }
+
+        let weight = previousPerformance.weightKg.map { Self.weightFormatter.string(from: NSNumber(value: $0)) ?? "\($0)" }
+        let reps = previousPerformance.repetitions.map { "\($0)회" }
+
+        switch (weight, reps) {
+        case (.some(let weight), .some(let reps)):
+            return "직전 \(weight)kg · \(reps)"
+        case (.some(let weight), .none):
+            return "직전 \(weight)kg"
+        case (.none, .some(let reps)):
+            return "직전 \(reps)"
+        case (.none, .none):
+            return nil
         }
     }
 
@@ -394,6 +665,9 @@ private struct FinishedWorkoutSummaryView: View {
             Text("\(record.exercises.count)개 운동 · \(completedSetCount)세트")
                 .font(.system(size: 14, weight: .semibold))
                 .foregroundStyle(AppTheme.secondaryText)
+            Text("총 운동시간 \(Self.formattedWorkoutDuration(record.workoutDurationSeconds()))")
+                .font(.system(size: 14, weight: .semibold))
+                .foregroundStyle(AppTheme.secondaryText)
         }
         .frame(maxWidth: .infinity, alignment: .leading)
         .padding(16)
@@ -402,15 +676,145 @@ private struct FinishedWorkoutSummaryView: View {
     }
 
     private var completedSetCount: Int {
-        record.exercises.reduce(0) { total, exercise in
+        record.completedSetCount
+    }
+
+    private static func formattedWorkoutDuration(_ seconds: Int) -> String {
+        let clampedSeconds = max(0, seconds)
+        let hours = clampedSeconds / 3_600
+        let minutes = (clampedSeconds % 3_600) / 60
+        let seconds = clampedSeconds % 60
+
+        if hours > 0 {
+            return String(format: "%d:%02d:%02d", hours, minutes, seconds)
+        }
+
+        return String(format: "%d:%02d", minutes, seconds)
+    }
+}
+
+private extension WorkoutSessionRecord {
+    var completedSetCount: Int {
+        exercises.reduce(0) { total, exercise in
             total + exercise.sets.filter { $0.completedAt != nil }.count
         }
     }
 }
 
+private extension Array where Element == ActiveWorkoutExercise {
+    func sortedByWorkoutOrder() -> [ActiveWorkoutExercise] {
+        enumerated()
+            .sorted { lhs, rhs in
+                if lhs.element.orderIndex == rhs.element.orderIndex {
+                    return lhs.offset < rhs.offset
+                }
+
+                return lhs.element.orderIndex < rhs.element.orderIndex
+            }
+            .map(\.element)
+    }
+}
+
+#if canImport(UIKit)
+private struct KeyboardDismissTapInstaller: UIViewRepresentable {
+    var onTapOutsideInput: () -> Void
+
+    func makeUIView(context: Context) -> UIView {
+        UIView(frame: .zero)
+    }
+
+    func updateUIView(_ uiView: UIView, context: Context) {
+        context.coordinator.onTapOutsideInput = onTapOutsideInput
+
+        DispatchQueue.main.async {
+            guard let window = uiView.window else {
+                return
+            }
+
+            context.coordinator.installIfNeeded(on: window)
+        }
+    }
+
+    static func dismantleUIView(_ uiView: UIView, coordinator: Coordinator) {
+        coordinator.uninstall()
+    }
+
+    func makeCoordinator() -> Coordinator {
+        Coordinator(onTapOutsideInput: onTapOutsideInput)
+    }
+
+    final class Coordinator: NSObject, UIGestureRecognizerDelegate {
+        var onTapOutsideInput: () -> Void
+        private weak var installedWindow: UIWindow?
+        private weak var recognizer: UITapGestureRecognizer?
+
+        init(onTapOutsideInput: @escaping () -> Void) {
+            self.onTapOutsideInput = onTapOutsideInput
+        }
+
+        func installIfNeeded(on window: UIWindow) {
+            guard installedWindow !== window else {
+                return
+            }
+
+            uninstall()
+
+            let recognizer = UITapGestureRecognizer(target: self, action: #selector(handleTap))
+            recognizer.cancelsTouchesInView = false
+            recognizer.delegate = self
+            window.addGestureRecognizer(recognizer)
+            installedWindow = window
+            self.recognizer = recognizer
+        }
+
+        func uninstall() {
+            if let recognizer, let installedWindow {
+                installedWindow.removeGestureRecognizer(recognizer)
+            }
+
+            installedWindow = nil
+            recognizer = nil
+        }
+
+        @objc private func handleTap() {
+            onTapOutsideInput()
+        }
+
+        func gestureRecognizer(_ gestureRecognizer: UIGestureRecognizer, shouldReceive touch: UITouch) -> Bool {
+            var touchedView: UIView? = touch.view
+            while let view = touchedView {
+                if view is UITextField || view is UITextView {
+                    return false
+                }
+
+                touchedView = view.superview
+            }
+
+            return true
+        }
+
+        func gestureRecognizer(
+            _ gestureRecognizer: UIGestureRecognizer,
+            shouldRecognizeSimultaneouslyWith otherGestureRecognizer: UIGestureRecognizer
+        ) -> Bool {
+            true
+        }
+    }
+}
+#else
+private struct KeyboardDismissTapInstaller: View {
+    var onTapOutsideInput: () -> Void
+
+    var body: some View {
+        EmptyView()
+    }
+}
+#endif
+
 private struct WorkoutMemoView_Previews: PreviewProvider {
     static var previews: some View {
         WorkoutMemoView()
             .environmentObject(AppDataStore())
+            .environmentObject(WatchSyncService())
     }
 }

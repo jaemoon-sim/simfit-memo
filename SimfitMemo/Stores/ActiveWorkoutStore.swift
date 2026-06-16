@@ -62,7 +62,7 @@ final class ActiveWorkoutStore: ObservableObject {
         targetRepetitions: Int? = nil,
         actualWeightKg: Double? = nil,
         actualRepetitions: Int? = nil,
-        restSeconds: Int = 90,
+        restSeconds: Int = ExerciseSeedService.defaultRestSeconds,
         now: Date = Date()
     ) -> ActiveWorkoutSet? {
         guard var workout = state else {
@@ -133,6 +133,24 @@ final class ActiveWorkoutStore: ObservableObject {
         }
 
         return result
+    }
+
+    @discardableResult
+    func adjustRestTimer(by deltaSeconds: Int, now: Date = Date()) -> Bool {
+        guard var workout = state else {
+            return false
+        }
+
+        let didAdjust = workout.adjustRestTimer(
+            by: deltaSeconds,
+            now: now,
+            restTimer: restTimer
+        )
+        if didAdjust {
+            state = workout
+        }
+
+        return didAdjust
     }
 
     @discardableResult

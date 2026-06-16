@@ -67,7 +67,7 @@ public struct WorkoutSetRecord: Identifiable, Codable, Equatable, Sendable {
         targetRepetitions: Int? = nil,
         actualWeightKg: Double? = nil,
         actualRepetitions: Int? = nil,
-        restSeconds: Int = 90,
+        restSeconds: Int = ExerciseSeedService.defaultRestSeconds,
         completedAt: Date? = nil
     ) {
         self.id = id

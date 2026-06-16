@@ -21,6 +21,36 @@ final class WatchSyncPayloadCodingTests: XCTestCase {
         XCTAssertEqual(decoded, payload)
     }
 
+    func testRestAdjustmentPayloadDictionaryUsesRestAdjustmentKind() throws {
+        let payload = WatchSyncPayloadDTO.restAdjustment(makeRestAdjustmentEvent())
+
+        let dictionary = try WatchPayloadCoding.makeDictionary(from: payload)
+        let decoded = try WatchPayloadCoding.decodeDictionary(dictionary)
+
+        XCTAssertEqual(dictionary[WatchPayloadCoding.payloadKindKey] as? String, WatchSyncPayloadKind.restAdjustment.rawValue)
+        XCTAssertEqual(decoded, payload)
+    }
+
+    func testSyncRequestPayloadDictionaryUsesSyncRequestKind() throws {
+        let payload = WatchSyncPayloadDTO.syncRequest(makeSyncRequestEvent())
+
+        let dictionary = try WatchPayloadCoding.makeDictionary(from: payload)
+        let decoded = try WatchPayloadCoding.decodeDictionary(dictionary)
+
+        XCTAssertEqual(dictionary[WatchPayloadCoding.payloadKindKey] as? String, WatchSyncPayloadKind.syncRequest.rawValue)
+        XCTAssertEqual(decoded, payload)
+    }
+
+    func testFullSnapshotPayloadDictionaryUsesFullSnapshotKind() throws {
+        let payload = WatchSyncPayloadDTO.fullSnapshot(makeFullSnapshot())
+
+        let dictionary = try WatchPayloadCoding.makeDictionary(from: payload)
+        let decoded = try WatchPayloadCoding.decodeDictionary(dictionary)
+
+        XCTAssertEqual(dictionary[WatchPayloadCoding.payloadKindKey] as? String, WatchSyncPayloadKind.fullSnapshot.rawValue)
+        XCTAssertEqual(decoded, payload)
+    }
+
     func testPayloadDictionaryRejectsFutureSchemaVersion() throws {
         let payload = WatchSyncPayloadDTO.setCompletion(makeSetCompletionEvent())
         var dictionary = try WatchPayloadCoding.makeDictionary(from: payload)
@@ -90,6 +120,36 @@ final class WatchSyncPayloadCodingTests: XCTestCase {
             completedAt: Date(timeIntervalSince1970: 1_000),
             sourceDeviceID: "watch-test-device",
             clientSequence: 7
+        )
+    }
+
+    private func makeRestAdjustmentEvent() -> RestAdjustmentEventDTO {
+        RestAdjustmentEventDTO(
+            id: UUID(uuidString: "00000000-0000-0000-0000-000000000021")!,
+            sessionID: UUID(uuidString: "00000000-0000-0000-0000-000000000022")!,
+            deltaSeconds: 10,
+            requestedAt: Date(timeIntervalSince1970: 1_050),
+            sourceDeviceID: "watch-test-device",
+            clientSequence: 8
+        )
+    }
+
+    private func makeSyncRequestEvent() -> SyncRequestEventDTO {
+        SyncRequestEventDTO(
+            id: UUID(uuidString: "00000000-0000-0000-0000-000000000031")!,
+            requestedAt: Date(timeIntervalSince1970: 1_060),
+            sourceDeviceID: "watch-test-device",
+            clientSequence: 9
+        )
+    }
+
+    private func makeFullSnapshot() -> FullSyncSnapshotDTO {
+        FullSyncSnapshotDTO(
+            id: UUID(uuidString: "00000000-0000-0000-0000-000000000041")!,
+            generatedAt: Date(timeIntervalSince1970: 1_200),
+            activeWorkout: nil,
+            routines: [],
+            history: []
         )
     }
 }

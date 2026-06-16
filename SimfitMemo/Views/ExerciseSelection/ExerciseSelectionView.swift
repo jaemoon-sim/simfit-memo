@@ -2,11 +2,13 @@ import SwiftUI
 
 struct ExerciseSelectionView: View {
     var routineName: String?
+    var selectionTitle: String
+    var onRoutineExerciseSelection: (([Exercise]) -> Void)?
 
     @EnvironmentObject private var appStore: AppDataStore
     @Environment(\.dismiss) private var dismiss
     @State private var availableExercises: [Exercise]
-    @State private var selectedExerciseIDs: Set<UUID> = []
+    @State private var selectedExerciseIDs: [UUID] = []
     @State private var bookmarkedExerciseIDs: Set<UUID>
     @State private var searchText = ""
     @State private var selectedBodyPart: BodyPart?
@@ -19,8 +21,15 @@ struct ExerciseSelectionView: View {
     @State private var editingRoutine: Routine?
     @State private var confirmationMessage = ""
 
-    init(exercises: [Exercise], routineName: String? = nil) {
+    init(
+        exercises: [Exercise],
+        routineName: String? = nil,
+        selectionTitle: String? = nil,
+        onRoutineExerciseSelection: (([Exercise]) -> Void)? = nil
+    ) {
         self.routineName = routineName
+        self.selectionTitle = selectionTitle ?? routineName ?? "운동 선택"
+        self.onRoutineExerciseSelection = onRoutineExerciseSelection
         _availableExercises = State(initialValue: exercises)
         _bookmarkedExerciseIDs = State(initialValue: Set(exercises.filter(\.isBookmarked).map(\.id)))
     }
@@ -62,7 +71,7 @@ struct ExerciseSelectionView: View {
 
             ScrollView(showsIndicators: false) {
                 VStack(alignment: .leading, spacing: 16) {
-                    AppTopBar(title: routineName ?? "운동 선택", showsBackButton: true, leadingAction: {
+                    AppTopBar(title: selectionTitle, showsBackButton: true, leadingAction: {
                         dismiss()
                     })
 
@@ -92,7 +101,7 @@ struct ExerciseSelectionView: View {
             CustomExerciseSheet { name, bodyPart in
                 let customExercise = appStore.addCustomExercise(name: name, bodyPart: bodyPart)
                 availableExercises.insert(customExercise, at: 0)
-                selectedExerciseIDs.insert(customExercise.id)
+                selectedExerciseIDs.append(customExercise.id)
             }
             .presentationDetents([.medium])
             .presentationDragIndicator(.hidden)
@@ -120,7 +129,7 @@ struct ExerciseSelectionView: View {
         }
         .navigationDestination(isPresented: editingRoutineBinding) {
             if let editingRoutine {
-                RoutineTargetEditorView(routine: editingRoutine)
+                RoutineTargetEditorView(routine: editingRoutine, saveMode: .createAndShowRoutineList)
             }
         }
         .preferredColorScheme(.dark)
@@ -186,7 +195,7 @@ struct ExerciseSelectionView: View {
             ForEach(filteredExercises) { exercise in
                 ExerciseRow(
                     exercise: exercise,
-                    isSelected: selectedExerciseIDs.contains(exercise.id),
+                    selectionIndex: selectionIndex(for: exercise),
                     isBookmarked: bookmarkedExerciseIDs.contains(exercise.id),
                     selectionAction: { toggleSelection(for: exercise) },
                     bookmarkAction: { toggleBookmark(for: exercise) },
@@ -211,11 +220,15 @@ struct ExerciseSelectionView: View {
     }
 
     private func toggleSelection(for exercise: Exercise) {
-        if selectedExerciseIDs.contains(exercise.id) {
-            selectedExerciseIDs.remove(exercise.id)
+        if let index = selectedExerciseIDs.firstIndex(of: exercise.id) {
+            selectedExerciseIDs.remove(at: index)
         } else {
-            selectedExerciseIDs.insert(exercise.id)
+            selectedExerciseIDs.append(exercise.id)
         }
+    }
+
+    private func selectionIndex(for exercise: Exercise) -> Int? {
+        selectedExerciseIDs.firstIndex(of: exercise.id).map { $0 + 1 }
     }
 
     private func toggleBookmark(for exercise: Exercise) {
@@ -233,13 +246,20 @@ struct ExerciseSelectionView: View {
     }
 
     private func commitSelection() {
-        let selectedExercises = availableExercises.filter { selectedExerciseIDs.contains($0.id) }
+        let exercisesByID = Dictionary(uniqueKeysWithValues: availableExercises.map { ($0.id, $0) })
+        let selectedExercises = selectedExerciseIDs.compactMap { exercisesByID[$0] }
         guard !selectedExercises.isEmpty else {
             return
         }
 
+        if let onRoutineExerciseSelection {
+            onRoutineExerciseSelection(selectedExercises)
+            dismiss()
+            return
+        }
+
         if let routineName {
-            if let routine = appStore.createRoutine(name: routineName, exercises: selectedExercises) {
+            if let routine = appStore.makeRoutineDraft(name: routineName, exercises: selectedExercises) {
                 editingRoutine = routine
             } else {
                 confirmationMessage = "루틴을 저장하지 못했어요."

@@ -3,6 +3,7 @@ import SwiftUI
 struct RoutineListView: View {
     var providedRoutines: [Routine]?
     var providedExercises: [Exercise]?
+    var backAction: (() -> Void)?
 
     @EnvironmentObject private var appStore: AppDataStore
     @Environment(\.dismiss) private var dismiss
@@ -11,9 +12,10 @@ struct RoutineListView: View {
     @State private var showsWorkoutMemo = false
     @State private var sortOption = RoutineSortOption.recent
 
-    init(routines: [Routine]? = nil, exercises: [Exercise]? = nil) {
+    init(routines: [Routine]? = nil, exercises: [Exercise]? = nil, backAction: (() -> Void)? = nil) {
         self.providedRoutines = routines
         self.providedExercises = exercises
+        self.backAction = backAction
     }
 
     private var routines: [Routine] {
@@ -146,7 +148,11 @@ struct RoutineListView: View {
     private var topBar: some View {
         ZStack {
             AppTopBar(title: "루틴", showsBackButton: true, leadingAction: {
-                dismiss()
+                if let backAction {
+                    backAction()
+                } else {
+                    dismiss()
+                }
             })
 
             HStack {

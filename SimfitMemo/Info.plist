@@ -22,6 +22,8 @@
 	<string>1</string>
 	<key>NSHealthShareUsageDescription</key>
 	<string>SimfitMemo will use HealthKit heart-rate data when workout watch features are enabled.</string>
+	<key>NSSupportsLiveActivities</key>
+	<true/>
 	<key>UIApplicationSupportsIndirectInputEvents</key>
 	<true/>
 	<key>UILaunchScreen</key>

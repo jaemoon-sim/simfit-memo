@@ -4,7 +4,10 @@ public enum WatchSyncPayloadKind: String, Codable, Equatable, Sendable {
     case activeWorkout
     case routines
     case history
+    case fullSnapshot
     case setCompletion
+    case restAdjustment
+    case syncRequest
 }
 
 public enum WatchPayloadCodingError: Error, Equatable {
@@ -105,8 +108,14 @@ public extension WatchSyncPayloadDTO {
             return .routines
         case .history:
             return .history
+        case .fullSnapshot:
+            return .fullSnapshot
         case .setCompletion:
             return .setCompletion
+        case .restAdjustment:
+            return .restAdjustment
+        case .syncRequest:
+            return .syncRequest
         }
     }
 
@@ -118,7 +127,13 @@ public extension WatchSyncPayloadDTO {
             return snapshot.schemaVersion
         case .history(let snapshot):
             return snapshot.schemaVersion
+        case .fullSnapshot(let snapshot):
+            return snapshot.schemaVersion
         case .setCompletion(let event):
+            return event.schemaVersion
+        case .restAdjustment(let event):
+            return event.schemaVersion
+        case .syncRequest(let event):
             return event.schemaVersion
         }
     }

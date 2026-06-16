@@ -19,6 +19,54 @@ final class WatchSyncDTOTests: XCTestCase {
         XCTAssertEqual(decoded, payload)
     }
 
+    func testRestAdjustmentPayloadRoundTripsThroughJSON() throws {
+        let event = RestAdjustmentEventDTO(
+            id: UUID(uuidString: "00000000-0000-0000-0000-000000000021")!,
+            sessionID: UUID(uuidString: "00000000-0000-0000-0000-000000000022")!,
+            deltaSeconds: -10,
+            requestedAt: Date(timeIntervalSince1970: 1_050),
+            sourceDeviceID: "watch-test-device",
+            clientSequence: 8
+        )
+        let payload = WatchSyncPayloadDTO.restAdjustment(event)
+
+        let data = try JSONEncoder().encode(payload)
+        let decoded = try JSONDecoder().decode(WatchSyncPayloadDTO.self, from: data)
+
+        XCTAssertEqual(decoded, payload)
+    }
+
+    func testSyncRequestPayloadRoundTripsThroughJSON() throws {
+        let event = SyncRequestEventDTO(
+            id: UUID(uuidString: "00000000-0000-0000-0000-000000000031")!,
+            requestedAt: Date(timeIntervalSince1970: 1_060),
+            sourceDeviceID: "watch-test-device",
+            clientSequence: 9
+        )
+        let payload = WatchSyncPayloadDTO.syncRequest(event)
+
+        let data = try JSONEncoder().encode(payload)
+        let decoded = try JSONDecoder().decode(WatchSyncPayloadDTO.self, from: data)
+
+        XCTAssertEqual(decoded, payload)
+    }
+
+    func testFullSnapshotPayloadRoundTripsThroughJSON() throws {
+        let snapshot = FullSyncSnapshotDTO(
+            id: UUID(uuidString: "00000000-0000-0000-0000-000000000041")!,
+            generatedAt: Date(timeIntervalSince1970: 1_200),
+            activeWorkout: nil,
+            routines: [],
+            history: []
+        )
+        let payload = WatchSyncPayloadDTO.fullSnapshot(snapshot)
+
+        let data = try JSONEncoder().encode(payload)
+        let decoded = try JSONDecoder().decode(WatchSyncPayloadDTO.self, from: data)
+
+        XCTAssertEqual(decoded, payload)
+    }
+
     func testActiveWorkoutSnapshotRoundTripsThroughJSON() throws {
         let setID = UUID(uuidString: "00000000-0000-0000-0000-000000000011")!
         let exercise = ActiveWorkoutExercise(

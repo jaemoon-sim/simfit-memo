@@ -94,6 +94,16 @@ final class AppDataStore: ObservableObject {
 
     @discardableResult
     func createRoutine(name: String, exercises selectedExercises: [Exercise], now: Date = Date()) -> Routine? {
+        guard let routine = makeRoutineDraft(name: name, exercises: selectedExercises, now: now) else {
+            return nil
+        }
+
+        routines.insert(routine, at: 0)
+        persist()
+        return routine
+    }
+
+    func makeRoutineDraft(name: String, exercises selectedExercises: [Exercise], now: Date = Date()) -> Routine? {
         let trimmedName = name.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !trimmedName.isEmpty, !selectedExercises.isEmpty else {
             return nil
@@ -109,15 +119,33 @@ final class AppDataStore: ObservableObject {
             )
         }
 
-        let routine = Routine(
+        return Routine(
             name: trimmedName,
             exercises: routineExercises,
             createdAt: now,
             updatedAt: now
         )
-        routines.insert(routine, at: 0)
+    }
+
+    @discardableResult
+    func saveNewRoutine(_ routine: Routine, now: Date = Date()) -> Routine? {
+        let trimmedName = routine.name.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmedName.isEmpty, !routine.exercises.isEmpty else {
+            return nil
+        }
+
+        var savedRoutine = routine
+        savedRoutine.name = trimmedName
+        savedRoutine.updatedAt = now
+
+        if let index = routines.firstIndex(where: { $0.id == savedRoutine.id }) {
+            routines[index] = savedRoutine
+        } else {
+            routines.insert(savedRoutine, at: 0)
+        }
+
         persist()
-        return routine
+        return savedRoutine
     }
 
     @discardableResult
@@ -325,6 +353,29 @@ final class AppDataStore: ObservableObject {
     }
 
     @discardableResult
+    func moveActiveWorkoutExercise(
+        exerciseID: UUID,
+        direction: ActiveWorkoutExerciseMoveDirection,
+        now: Date = Date()
+    ) -> Bool {
+        guard var workout = activeWorkout else {
+            return false
+        }
+
+        let didMove = workout.moveExercise(
+            exerciseID: exerciseID,
+            direction: direction,
+            now: now
+        )
+        if didMove {
+            activeWorkout = workout
+            persist()
+        }
+
+        return didMove
+    }
+
+    @discardableResult
     func applyWatchSetCompletion(_ event: SetCompletionEventDTO) -> ActiveWorkoutSetCompletionResult {
         guard activeWorkout?.id == event.sessionID else {
             return .setNotFound
@@ -335,6 +386,34 @@ final class AppDataStore: ObservableObject {
             setID: event.setID,
             completedAt: event.completedAt
         )
+    }
+
+    @discardableResult
+    func adjustActiveRestTimer(by deltaSeconds: Int, now: Date = Date()) -> Bool {
+        guard var workout = activeWorkout else {
+            return false
+        }
+
+        let didAdjust = workout.adjustRestTimer(
+            by: deltaSeconds,
+            now: now,
+            restTimer: restTimer
+        )
+        if didAdjust {
+            activeWorkout = workout
+            persist()
+        }
+
+        return didAdjust
+    }
+
+    @discardableResult
+    func applyWatchRestAdjustment(_ event: RestAdjustmentEventDTO) -> Bool {
+        guard activeWorkout?.id == event.sessionID else {
+            return false
+        }
+
+        return adjustActiveRestTimer(by: event.deltaSeconds)
     }
 
     @discardableResult

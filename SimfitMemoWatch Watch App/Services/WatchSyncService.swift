@@ -88,7 +88,40 @@ final class WatchSyncService: NSObject, ObservableObject {
             return result
         }
 
+        completeLocalSet(event)
         return deliver(.setCompletion(event), eventForRetry: event)
+    }
+
+    @discardableResult
+    func sendRestAdjustment(for state: ActiveWorkoutState, deltaSeconds: Int) -> WatchSyncDeliveryResult {
+        guard deltaSeconds != 0 else {
+            let result = WatchSyncDeliveryResult.failed("Rest adjustment cannot be zero.")
+            publishDeliveryResult(result)
+            return result
+        }
+
+        clientSequence += 1
+        let event = RestAdjustmentEventDTO(
+            sessionID: state.id,
+            deltaSeconds: deltaSeconds,
+            sourceDeviceID: deviceIdentifier,
+            clientSequence: clientSequence
+        )
+
+        adjustLocalRestTimer(by: deltaSeconds)
+        return deliver(.restAdjustment(event))
+    }
+
+    @discardableResult
+    func requestSync() -> WatchSyncDeliveryResult {
+        activate()
+        clientSequence += 1
+        let event = SyncRequestEventDTO(
+            sourceDeviceID: deviceIdentifier,
+            clientSequence: clientSequence
+        )
+
+        return deliver(.syncRequest(event))
     }
 
     private func deliver(
@@ -119,11 +152,16 @@ final class WatchSyncService: NSObject, ObservableObject {
                 dictionary,
                 replyHandler: nil,
                 errorHandler: { [weak self] _ in
-                    guard let self, let event else {
+                    guard let self else {
                         return
                     }
 
-                    self.enqueueAndTransfer(event, using: session)
+                    if let event {
+                        self.enqueueAndTransfer(event, using: session)
+                    } else {
+                        session.transferUserInfo(dictionary)
+                        self.publishDeliveryResult(.queuedUserInfo)
+                    }
                 }
             )
 
@@ -164,6 +202,48 @@ final class WatchSyncService: NSObject, ObservableObject {
 
             self.pendingEvents.append(event)
             self.pendingEventCount = self.pendingEvents.count
+        }
+    }
+
+    private func adjustLocalRestTimer(by deltaSeconds: Int) {
+        DispatchQueue.main.async { [weak self] in
+            guard let self, var snapshot = self.activeWorkoutSnapshot, var state = snapshot.state else {
+                return
+            }
+
+            let now = Date()
+            guard state.adjustRestTimer(by: deltaSeconds, now: now) else {
+                return
+            }
+
+            snapshot.generatedAt = now
+            snapshot.state = state
+            self.activeWorkoutSnapshot = snapshot
+            self.cache.save(snapshot)
+        }
+    }
+
+    private func completeLocalSet(_ event: SetCompletionEventDTO) {
+        DispatchQueue.main.async { [weak self] in
+            guard let self,
+                  var snapshot = self.activeWorkoutSnapshot,
+                  var state = snapshot.state,
+                  state.id == event.sessionID else {
+                return
+            }
+
+            guard state.completeSet(
+                exerciseID: event.exerciseID,
+                setID: event.setID,
+                completedAt: event.completedAt
+            ) == .completed else {
+                return
+            }
+
+            snapshot.generatedAt = event.completedAt
+            snapshot.state = state
+            self.activeWorkoutSnapshot = snapshot
+            self.cache.save(snapshot)
         }
     }
 
@@ -212,7 +292,26 @@ final class WatchSyncService: NSObject, ObservableObject {
             case .history(let snapshot):
                 self.historySnapshot = snapshot
                 self.cache.save(snapshot)
-            case .setCompletion:
+            case .fullSnapshot(let snapshot):
+                let activeWorkoutSnapshot = ActiveWorkoutSnapshotDTO(
+                    generatedAt: snapshot.generatedAt,
+                    state: snapshot.activeWorkout
+                )
+                let routineSnapshot = RoutineSnapshotDTO(
+                    generatedAt: snapshot.generatedAt,
+                    routines: snapshot.routines
+                )
+                let historySnapshot = WorkoutHistorySnapshotDTO(
+                    generatedAt: snapshot.generatedAt,
+                    records: snapshot.history
+                )
+                self.activeWorkoutSnapshot = activeWorkoutSnapshot
+                self.routineSnapshot = routineSnapshot
+                self.historySnapshot = historySnapshot
+                self.cache.save(activeWorkoutSnapshot)
+                self.cache.save(routineSnapshot)
+                self.cache.save(historySnapshot)
+            case .setCompletion, .restAdjustment, .syncRequest:
                 break
             }
         }

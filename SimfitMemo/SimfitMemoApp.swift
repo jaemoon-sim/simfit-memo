@@ -23,6 +23,7 @@ private struct AppRootView: View {
     @Environment(\.modelContext) private var modelContext
     @StateObject private var appStore = AppDataStore()
     @StateObject private var watchSyncService = WatchSyncService()
+    @StateObject private var liveActivityService = WorkoutLiveActivityService()
 
     var body: some View {
         HomeView()
@@ -34,22 +35,33 @@ private struct AppRootView: View {
                     appStore.applyWatchSetCompletion(event)
                     syncWatchSnapshots()
                 }
+                watchSyncService.onRestAdjustment = { event in
+                    appStore.applyWatchRestAdjustment(event)
+                    syncWatchSnapshots()
+                }
+                watchSyncService.onSyncRequest = { _ in
+                    syncWatchSnapshots()
+                }
                 syncWatchSnapshots()
+                liveActivityService.sync(with: appStore.activeWorkout)
             }
             .onChange(of: appStore.activeWorkout) { _, _ in
-                watchSyncService.sendActiveWorkoutSnapshot(appStore.activeWorkout)
+                syncWatchSnapshots()
+                liveActivityService.sync(with: appStore.activeWorkout)
             }
-            .onChange(of: appStore.routines) { _, routines in
-                watchSyncService.sendRoutineSnapshot(routines)
+            .onChange(of: appStore.routines) { _, _ in
+                syncWatchSnapshots()
             }
-            .onChange(of: appStore.history) { _, history in
-                watchSyncService.sendHistorySnapshot(history)
+            .onChange(of: appStore.history) { _, _ in
+                syncWatchSnapshots()
             }
     }
 
     private func syncWatchSnapshots() {
-        watchSyncService.sendActiveWorkoutSnapshot(appStore.activeWorkout)
-        watchSyncService.sendRoutineSnapshot(appStore.routines)
-        watchSyncService.sendHistorySnapshot(appStore.history)
+        watchSyncService.sendFullSnapshot(
+            activeWorkout: appStore.activeWorkout,
+            routines: appStore.routines,
+            history: appStore.history
+        )
     }
 }

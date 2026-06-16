@@ -1,14 +1,24 @@
 import SwiftUI
 
+enum RoutineTargetEditorSaveMode {
+    case updateAndDismiss
+    case createAndShowRoutineList
+}
+
 struct RoutineTargetEditorView: View {
     let routine: Routine
+    var saveMode: RoutineTargetEditorSaveMode = .updateAndDismiss
 
     @EnvironmentObject private var appStore: AppDataStore
     @Environment(\.dismiss) private var dismiss
+    @Environment(\.resetToHome) private var resetToHome
     @State private var draft: RoutineTargetDraft
+    @State private var isAddingExercises = false
+    @State private var showsRoutineList = false
 
-    init(routine: Routine) {
+    init(routine: Routine, saveMode: RoutineTargetEditorSaveMode = .updateAndDismiss) {
         self.routine = routine
+        self.saveMode = saveMode
         _draft = State(initialValue: RoutineTargetDraft(routine: routine))
     }
 
@@ -24,6 +34,7 @@ struct RoutineTargetEditorView: View {
 
                     nameField
                     exerciseSections
+                    addExerciseButton
                 }
                 .padding(.horizontal, AppTheme.horizontalPadding)
                 .padding(.top, AppTheme.screenTopPadding)
@@ -33,15 +44,23 @@ struct RoutineTargetEditorView: View {
         .toolbar(.hidden, for: .navigationBar)
         .safeAreaInset(edge: .bottom) {
             PrimaryButton(title: "저장하기", systemImage: "checkmark", isEnabled: draft.canSave) {
-                if let updatedRoutine = draft.makeRoutine() {
-                    appStore.updateRoutine(updatedRoutine)
-                    dismiss()
-                }
+                saveRoutine()
             }
             .padding(.horizontal, AppTheme.horizontalPadding)
             .padding(.top, 12)
             .padding(.bottom, 10)
             .background(AppTheme.background)
+        }
+        .navigationDestination(isPresented: $isAddingExercises) {
+            ExerciseSelectionView(
+                exercises: appStore.exercises,
+                selectionTitle: "운동 추가"
+            ) { selectedExercises in
+                draft.appendExercises(selectedExercises)
+            }
+        }
+        .navigationDestination(isPresented: $showsRoutineList) {
+            RoutineListView(backAction: resetToHome)
         }
         .preferredColorScheme(.dark)
     }
@@ -71,6 +90,40 @@ struct RoutineTargetEditorView: View {
         VStack(spacing: 12) {
             ForEach($draft.exercises) { $exercise in
                 RoutineTargetExerciseSection(exercise: $exercise)
+            }
+        }
+    }
+
+    private var addExerciseButton: some View {
+        Button {
+            isAddingExercises = true
+        } label: {
+            Label("운동 추가하기", systemImage: "plus")
+                .font(AppTheme.bodyFont(15, weight: .bold))
+                .foregroundStyle(AppTheme.primaryBlue)
+                .frame(maxWidth: .infinity, minHeight: 52)
+                .background(AppTheme.recessedSurface)
+                .overlay {
+                    RoundedRectangle(cornerRadius: AppTheme.cardRadius)
+                        .stroke(AppTheme.divider, lineWidth: 1)
+                }
+                .clipShape(RoundedRectangle(cornerRadius: AppTheme.cardRadius))
+        }
+        .buttonStyle(.plain)
+    }
+
+    private func saveRoutine() {
+        guard let updatedRoutine = draft.makeRoutine() else {
+            return
+        }
+
+        switch saveMode {
+        case .updateAndDismiss:
+            appStore.updateRoutine(updatedRoutine)
+            dismiss()
+        case .createAndShowRoutineList:
+            if appStore.saveNewRoutine(updatedRoutine) != nil {
+                showsRoutineList = true
             }
         }
     }
@@ -251,6 +304,28 @@ private struct RoutineTargetDraft {
             completedCount: completedCount
         )
     }
+
+    mutating func appendExercises(_ selectedExercises: [Exercise]) {
+        var existingExerciseIDs = Set(exercises.map(\.exerciseID))
+
+        for selectedExercise in selectedExercises where !existingExerciseIDs.contains(selectedExercise.id) {
+            exercises.append(
+                RoutineExerciseTargetDraft(
+                    exercise: selectedExercise,
+                    orderIndex: exercises.count
+                )
+            )
+            existingExerciseIDs.insert(selectedExercise.id)
+        }
+
+        normalizeOrder()
+    }
+
+    private mutating func normalizeOrder() {
+        for index in exercises.indices {
+            exercises[index].orderIndex = index
+        }
+    }
 }
 
 private struct RoutineExerciseTargetDraft: Identifiable {
@@ -271,6 +346,15 @@ private struct RoutineExerciseTargetDraft: Identifiable {
         sets = sortedTargets.isEmpty
             ? [RoutineSetTargetDraft(orderIndex: 0)]
             : sortedTargets.map(RoutineSetTargetDraft.init)
+    }
+
+    init(exercise: Exercise, orderIndex: Int) {
+        id = UUID()
+        exerciseID = exercise.id
+        exerciseName = exercise.displayName
+        bodyPart = exercise.bodyPart
+        self.orderIndex = orderIndex
+        sets = (0..<3).map { RoutineSetTargetDraft(orderIndex: $0) }
     }
 
     mutating func addSet() {

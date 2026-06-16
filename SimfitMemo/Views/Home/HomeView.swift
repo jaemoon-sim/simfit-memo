@@ -2,8 +2,12 @@ import SwiftUI
 
 struct HomeView: View {
     @EnvironmentObject private var appStore: AppDataStore
+    @EnvironmentObject private var watchSyncService: WatchSyncService
 
     @State private var isResting = false
+    @State private var selectedDate = Date()
+    @State private var isCalendarPresented = false
+    @State private var navigationResetID = UUID()
 
     var body: some View {
         NavigationStack {
@@ -27,6 +31,18 @@ struct HomeView: View {
             }
             .toolbar(.hidden, for: .navigationBar)
         }
+        .id(navigationResetID)
+        .environment(\.resetToHome) {
+            navigationResetID = UUID()
+        }
+        .sheet(isPresented: $isCalendarPresented) {
+            NavigationStack {
+                WorkoutCalendarView(selectedDate: $selectedDate)
+            }
+            .environmentObject(appStore)
+            .preferredColorScheme(.dark)
+            .presentationDetents([.large])
+        }
         .preferredColorScheme(.dark)
     }
 
@@ -38,18 +54,14 @@ struct HomeView: View {
         appStore.routines
     }
 
-    private var todaysRecords: [WorkoutSessionRecord] {
-        appStore.records(on: Date())
-    }
-
-    private var recentRecords: [WorkoutSessionRecord] {
-        Array(appStore.history.prefix(5))
+    private var selectedDateRecords: [WorkoutSessionRecord] {
+        appStore.records(on: selectedDate)
     }
 
     private var monthHeader: some View {
         HStack(alignment: .center) {
             VStack(alignment: .leading, spacing: 4) {
-                Text("\(Calendar.current.component(.month, from: Date()))월")
+                Text("\(Calendar.current.component(.month, from: selectedDate))월")
                     .font(AppTheme.titleFont(30))
                     .foregroundStyle(AppTheme.primaryText)
 
@@ -61,18 +73,40 @@ struct HomeView: View {
             Spacer()
 
             HStack(spacing: 6) {
-                AppIconButton(systemName: "calendar", backgroundColor: AppTheme.surface) {}
+                AppIconButton(systemName: "arrow.triangle.2.circlepath", backgroundColor: AppTheme.surface) {
+                    syncWatchNow()
+                }
+                    .accessibilityLabel("Watch 동기화")
+
+                AppIconButton(systemName: "calendar", backgroundColor: AppTheme.surface) {
+                    isCalendarPresented = true
+                }
                     .accessibilityLabel("달력")
-                AppIconButton(systemName: "line.3.horizontal", backgroundColor: AppTheme.surface) {}
-                    .accessibilityLabel("메뉴")
             }
         }
+    }
+
+    private func syncWatchNow() {
+        watchSyncService.sendFullSnapshot(
+            activeWorkout: appStore.activeWorkout,
+            routines: appStore.routines,
+            history: appStore.history
+        )
     }
 
     private var dateStrip: some View {
         HStack(spacing: 8) {
             ForEach(visibleDates, id: \.self) { date in
-                DateStripItem(date: date, isSelected: Calendar.current.isDateInToday(date))
+                Button {
+                    selectedDate = date
+                } label: {
+                    DateStripItem(
+                        date: date,
+                        isSelected: Calendar.current.isDate(date, inSameDayAs: selectedDate),
+                        hasRecords: !appStore.records(on: date).isEmpty
+                    )
+                }
+                .buttonStyle(.plain)
             }
         }
     }
@@ -95,7 +129,7 @@ struct HomeView: View {
         VStack(alignment: .leading, spacing: 18) {
             HStack {
                 VStack(alignment: .leading, spacing: 7) {
-                    Text("오늘")
+                    Text(selectedDateLabel)
                         .font(AppTheme.bodyFont(15, weight: .bold))
                         .foregroundStyle(AppTheme.secondaryText)
 
@@ -115,29 +149,38 @@ struct HomeView: View {
                     .clipShape(RoundedRectangle(cornerRadius: AppTheme.cardRadius))
             }
 
-            HStack(spacing: 10) {
-                NavigationLink {
-                    RoutineListView()
+            if Calendar.current.isDateInToday(selectedDate) {
+                HStack(spacing: 10) {
+                    NavigationLink {
+                        RoutineListView()
+                    } label: {
+                        OutlineButtonLabel(title: "불러오기", systemImage: "tray.and.arrow.down")
+                    }
+                    .buttonStyle(.plain)
+
+                    if appStore.activeWorkout == nil {
+                        NavigationLink {
+                            ExerciseSelectionView(exercises: exercises)
+                        } label: {
+                            PrimaryButtonLabel(title: "운동 선택하기", systemImage: "checklist")
+                        }
+                        .buttonStyle(.plain)
+                    } else {
+                        NavigationLink {
+                            WorkoutMemoView()
+                        } label: {
+                            PrimaryButtonLabel(title: "이어서 기록하기", systemImage: "pencil")
+                        }
+                        .buttonStyle(.plain)
+                    }
+                }
+            } else {
+                Button {
+                    selectedDate = Date()
                 } label: {
-                    OutlineButtonLabel(title: "불러오기", systemImage: "tray.and.arrow.down")
+                    OutlineButtonLabel(title: "오늘로 이동", systemImage: "calendar.badge.clock")
                 }
                 .buttonStyle(.plain)
-
-                if appStore.activeWorkout == nil {
-                    NavigationLink {
-                        ExerciseSelectionView(exercises: exercises)
-                    } label: {
-                        PrimaryButtonLabel(title: "운동 선택하기", systemImage: "checklist")
-                    }
-                    .buttonStyle(.plain)
-                } else {
-                    NavigationLink {
-                        WorkoutMemoView()
-                    } label: {
-                        PrimaryButtonLabel(title: "이어서 기록하기", systemImage: "pencil")
-                    }
-                    .buttonStyle(.plain)
-                }
             }
         }
         .padding(18)
@@ -150,61 +193,52 @@ struct HomeView: View {
     }
 
     private var todayCardTitle: String {
-        if appStore.activeWorkout != nil {
+        if Calendar.current.isDateInToday(selectedDate), appStore.activeWorkout != nil {
             return "진행 중인 운동이 있어요"
         }
 
-        if let latestRecord = todaysRecords.first {
-            return "\(latestRecord.exercises.count)개 운동 기록됨"
+        if !selectedDateRecords.isEmpty {
+            return "\(selectedDateRecords.count)개 운동 기록됨"
         }
 
-        return "운동을 직접 계획해보세요!"
+        if Calendar.current.isDateInToday(selectedDate) {
+            return "운동을 직접 계획해보세요!"
+        }
+
+        return "운동 기록이 없어요"
     }
 
     private var quickActionGrid: some View {
-        HStack(spacing: 12) {
-            NavigationLink {
-                NewRoutineView(exercises: exercises)
-            } label: {
-                HomeActionTile(
-                    title: "루틴 탐색",
-                    subtitle: "새 루틴 만들기",
-                    systemImage: "square.grid.2x2"
-                )
-            }
-            .buttonStyle(.plain)
-
-            NavigationLink {
-                RoutineListView()
-            } label: {
-                HomeActionTile(
-                    title: "내 루틴",
-                    subtitle: "\(routines.count)개 저장됨",
-                    systemImage: "list.bullet.rectangle"
-                )
-            }
-            .buttonStyle(.plain)
+        NavigationLink {
+            RoutineListView()
+        } label: {
+            HomeActionTile(
+                title: "내 루틴",
+                subtitle: "\(routines.count)개 저장됨",
+                systemImage: "list.bullet.rectangle"
+            )
         }
+        .buttonStyle(.plain)
     }
 
     @ViewBuilder
     private var historySection: some View {
-        if !recentRecords.isEmpty {
+        if !selectedDateRecords.isEmpty {
             VStack(alignment: .leading, spacing: 10) {
                 HStack {
-                    Text("최근 기록")
+                    Text("\(selectedDateLabel) 기록")
                         .font(AppTheme.bodyFont(17, weight: .bold))
                         .foregroundStyle(AppTheme.primaryText)
 
                     Spacer()
 
-                    Text("\(appStore.history.count)개")
+                    Text("\(selectedDateRecords.count)개")
                         .font(AppTheme.bodyFont(13, weight: .bold))
                         .foregroundStyle(AppTheme.secondaryText)
                 }
 
                 VStack(spacing: 10) {
-                    ForEach(recentRecords) { record in
+                    ForEach(selectedDateRecords) { record in
                         NavigationLink {
                             WorkoutHistoryDetailView(record: record)
                         } label: {
@@ -233,7 +267,7 @@ struct HomeView: View {
                     Text("전체 휴식")
                         .font(AppTheme.bodyFont(16, weight: .bold))
                         .foregroundStyle(AppTheme.primaryText)
-                    Text(isResting ? "휴식 타이머 준비됨" : "90초 휴식 타이머")
+                    Text(isResting ? "휴식 타이머 준비됨" : "60초 휴식 타이머")
                         .font(AppTheme.bodyFont(13, weight: .semibold))
                         .foregroundStyle(AppTheme.secondaryText)
                 }
@@ -257,14 +291,30 @@ struct HomeView: View {
 
     private var visibleDates: [Date] {
         (-3...3).compactMap { offset in
-            Calendar.current.date(byAdding: .day, value: offset, to: Date())
+            Calendar.current.date(byAdding: .day, value: offset, to: selectedDate)
         }
+    }
+
+    private var selectedDateLabel: String {
+        if Calendar.current.isDateInToday(selectedDate) {
+            return "오늘"
+        }
+
+        if Calendar.current.isDateInYesterday(selectedDate) {
+            return "어제"
+        }
+
+        let formatter = DateFormatter()
+        formatter.locale = Locale(identifier: "ko_KR")
+        formatter.dateFormat = "M월 d일"
+        return formatter.string(from: selectedDate)
     }
 }
 
 private struct DateStripItem: View {
     var date: Date
     var isSelected: Bool
+    var hasRecords: Bool
 
     private var weekday: String {
         let symbols = ["일", "월", "화", "수", "목", "금", "토"]
@@ -281,8 +331,13 @@ private struct DateStripItem: View {
             Text("\(Calendar.current.component(.day, from: date))")
                 .font(AppTheme.bodyFont(17, weight: .bold))
                 .foregroundStyle(isSelected ? Color.white : AppTheme.primaryText)
+
+            Circle()
+                .fill(isSelected ? Color.white.opacity(0.9) : AppTheme.primaryBlue)
+                .frame(width: 4, height: 4)
+                .opacity(hasRecords ? 1 : 0)
         }
-        .frame(maxWidth: .infinity, minHeight: 68)
+        .frame(maxWidth: .infinity, minHeight: 76)
         .background(isSelected ? AppTheme.primaryBlue : AppTheme.surface)
         .clipShape(RoundedRectangle(cornerRadius: AppTheme.cardRadius))
     }
@@ -316,7 +371,7 @@ private struct HomeActionTile: View {
 
             Spacer(minLength: 0)
         }
-        .frame(maxWidth: .infinity, minHeight: 132, alignment: .topLeading)
+        .frame(maxWidth: .infinity, minHeight: 120, maxHeight: 120, alignment: .topLeading)
         .padding(16)
         .background(AppTheme.surface)
         .overlay {

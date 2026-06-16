@@ -6,6 +6,59 @@ public enum ActiveWorkoutSetCompletionResult: Equatable, Sendable {
     case setNotFound
 }
 
+public enum ActiveWorkoutExerciseMoveDirection: Equatable, Sendable {
+    case up
+    case down
+}
+
+public struct PreviousWorkoutSetPerformance: Equatable, Sendable {
+    public var weightKg: Double?
+    public var repetitions: Int?
+
+    public init(weightKg: Double? = nil, repetitions: Int? = nil) {
+        self.weightKg = weightKg
+        self.repetitions = repetitions
+    }
+
+    public var isEmpty: Bool {
+        weightKg == nil && repetitions == nil
+    }
+}
+
+public extension Array where Element == WorkoutSessionRecord {
+    func latestSetPerformance(
+        matching exercise: ActiveWorkoutExercise,
+        setOrderIndex: Int,
+        before cutoffDate: Date? = nil
+    ) -> PreviousWorkoutSetPerformance? {
+        for record in stablySortedByLatestWorkoutDateDescending() where record.startedBefore(cutoffDate) {
+            guard let exerciseRecord = record.exercises.first(where: { $0.matches(exercise) }),
+                  let setRecord = exerciseRecord.sets.first(where: { $0.orderIndex == setOrderIndex }),
+                  let performance = setRecord.recordedPerformance,
+                  !performance.isEmpty else {
+                continue
+            }
+
+            return performance
+        }
+
+        return nil
+    }
+}
+
+public extension ActiveWorkoutState {
+    func elapsedWorkoutSeconds(now: Date = Date()) -> Int {
+        max(0, Int(now.timeIntervalSince(startedAt)))
+    }
+}
+
+public extension WorkoutSessionRecord {
+    func workoutDurationSeconds(until fallbackEndDate: Date = Date()) -> Int {
+        let finishedAt = endedAt ?? fallbackEndDate
+        return max(0, Int(finishedAt.timeIntervalSince(startedAt)))
+    }
+}
+
 public extension ActiveWorkoutState {
     static func starting(
         from routine: Routine,
@@ -94,7 +147,7 @@ public extension ActiveWorkoutState {
         targetRepetitions: Int? = nil,
         actualWeightKg: Double? = nil,
         actualRepetitions: Int? = nil,
-        restSeconds: Int = 90,
+        restSeconds: Int = ExerciseSeedService.defaultRestSeconds,
         now: Date = Date()
     ) -> ActiveWorkoutSet? {
         guard let exerciseIndex = exercises.firstIndex(where: { $0.id == exerciseID }) else {
@@ -175,6 +228,57 @@ public extension ActiveWorkoutState {
         return .completed
     }
 
+    @discardableResult
+    mutating func adjustRestTimer(
+        by deltaSeconds: Int,
+        now: Date = Date(),
+        restTimer: RestTimerCalculator = RestTimerCalculator()
+    ) -> Bool {
+        guard deltaSeconds != 0, let restEndAt else {
+            return false
+        }
+
+        let remainingSeconds = restTimer.remainingSeconds(restEndAt: restEndAt, now: now)
+        guard remainingSeconds > 0 else {
+            return false
+        }
+
+        let adjustedSeconds = max(0, remainingSeconds + deltaSeconds)
+        self.restEndAt = now.addingTimeInterval(TimeInterval(adjustedSeconds))
+        markUpdated(at: now)
+        return true
+    }
+
+    @discardableResult
+    mutating func moveExercise(
+        exerciseID: UUID,
+        direction: ActiveWorkoutExerciseMoveDirection,
+        now: Date = Date()
+    ) -> Bool {
+        exercises = exercises.stablySortedByOrderIndex()
+
+        guard let sourceIndex = exercises.firstIndex(where: { $0.id == exerciseID }) else {
+            return false
+        }
+
+        let destinationIndex: Int
+        switch direction {
+        case .up:
+            destinationIndex = sourceIndex - 1
+        case .down:
+            destinationIndex = sourceIndex + 1
+        }
+
+        guard exercises.indices.contains(destinationIndex) else {
+            return false
+        }
+
+        exercises.swapAt(sourceIndex, destinationIndex)
+        normalizeExerciseOrderIndices()
+        markUpdated(at: now)
+        return true
+    }
+
     func finishedRecord(endedAt: Date = Date()) -> WorkoutSessionRecord {
         WorkoutSessionRecord(
             id: id,
@@ -207,10 +311,71 @@ public extension ActiveWorkoutState {
     }
 }
 
+private extension Array where Element == WorkoutSessionRecord {
+    func stablySortedByLatestWorkoutDateDescending() -> [WorkoutSessionRecord] {
+        enumerated()
+            .sorted { lhs, rhs in
+                let lhsDate = lhs.element.latestWorkoutDate
+                let rhsDate = rhs.element.latestWorkoutDate
+                if lhsDate == rhsDate {
+                    return lhs.offset < rhs.offset
+                }
+
+                return lhsDate > rhsDate
+            }
+            .map(\.element)
+    }
+}
+
+private extension WorkoutSessionRecord {
+    var latestWorkoutDate: Date {
+        endedAt ?? startedAt
+    }
+
+    func startedBefore(_ cutoffDate: Date?) -> Bool {
+        guard let cutoffDate else {
+            return true
+        }
+
+        return startedAt < cutoffDate
+    }
+}
+
+private extension WorkoutExerciseRecord {
+    func matches(_ activeExercise: ActiveWorkoutExercise) -> Bool {
+        if let exerciseID = activeExercise.exerciseID,
+           let recordExerciseID = self.exerciseID {
+            return recordExerciseID == exerciseID
+        }
+
+        return exerciseName == activeExercise.exerciseName
+            && bodyPart == activeExercise.bodyPart
+    }
+}
+
+private extension WorkoutSetRecord {
+    var recordedPerformance: PreviousWorkoutSetPerformance? {
+        guard completedAt != nil || actualWeightKg != nil || actualRepetitions != nil else {
+            return nil
+        }
+
+        return PreviousWorkoutSetPerformance(
+            weightKg: actualWeightKg ?? targetWeightKg,
+            repetitions: actualRepetitions ?? targetRepetitions
+        )
+    }
+}
+
 private extension ActiveWorkoutState {
     mutating func markUpdated(at date: Date) {
         updatedAt = date
         syncVersion += 1
+    }
+
+    mutating func normalizeExerciseOrderIndices() {
+        for index in exercises.indices {
+            exercises[index].orderIndex = index
+        }
     }
 
     func indexPathForSet(exerciseID: UUID?, setID: UUID) -> (exerciseIndex: Int, setIndex: Int)? {
@@ -277,6 +442,7 @@ private protocol OrderedWorkoutElement {
 
 extension RoutineExercise: OrderedWorkoutElement {}
 extension RoutineSetTarget: OrderedWorkoutElement {}
+extension ActiveWorkoutExercise: OrderedWorkoutElement {}
 
 private extension Array where Element: OrderedWorkoutElement {
     func stablySortedByOrderIndex() -> [Element] {

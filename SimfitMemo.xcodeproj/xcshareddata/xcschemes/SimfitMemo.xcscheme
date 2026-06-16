@@ -22,6 +22,20 @@
             </BuildableReference>
          </BuildActionEntry>
          <BuildActionEntry
+            buildForTesting = "NO"
+            buildForRunning = "YES"
+            buildForProfiling = "YES"
+            buildForArchiving = "YES"
+            buildForAnalyzing = "YES">
+            <BuildableReference
+               BuildableIdentifier = "primary"
+               BlueprintIdentifier = "D08BD63A31CD93F7AE17FB8B"
+               BuildableName = "SimfitMemo Live Activity.appex"
+               BlueprintName = "SimfitMemo Live Activity"
+               ReferencedContainer = "container:SimfitMemo.xcodeproj">
+            </BuildableReference>
+         </BuildActionEntry>
+         <BuildActionEntry
             buildForTesting = "YES"
             buildForRunning = "NO"
             buildForProfiling = "NO"

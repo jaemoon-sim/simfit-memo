@@ -24,8 +24,12 @@ final class WatchSyncService: NSObject, ObservableObject {
     @Published private(set) var connectionState: WatchSyncConnectionState = .inactive
     @Published private(set) var lastDeliveryResult: WatchSyncDeliveryResult?
     @Published private(set) var lastReceivedSetCompletion: SetCompletionEventDTO?
+    @Published private(set) var lastReceivedRestAdjustment: RestAdjustmentEventDTO?
+    @Published private(set) var lastReceivedSyncRequest: SyncRequestEventDTO?
 
     var onSetCompletion: ((SetCompletionEventDTO) -> Void)?
+    var onRestAdjustment: ((RestAdjustmentEventDTO) -> Void)?
+    var onSyncRequest: ((SyncRequestEventDTO) -> Void)?
 
     private let session: WCSession?
     private var deduplicator = WatchSetCompletionEventDeduplicator()
@@ -60,6 +64,19 @@ final class WatchSyncService: NSObject, ObservableObject {
     @discardableResult
     func sendHistorySnapshot(_ records: [WorkoutSessionRecord]) -> WatchSyncDeliveryResult {
         send(.history(WorkoutHistorySnapshotDTO(records: records)))
+    }
+
+    @discardableResult
+    func sendFullSnapshot(
+        activeWorkout: ActiveWorkoutState?,
+        routines: [Routine],
+        history: [WorkoutSessionRecord]
+    ) -> WatchSyncDeliveryResult {
+        send(.fullSnapshot(FullSyncSnapshotDTO(
+            activeWorkout: activeWorkout,
+            routines: routines,
+            history: history
+        )))
     }
 
     @discardableResult
@@ -149,21 +166,28 @@ final class WatchSyncService: NSObject, ObservableObject {
     }
 
     private func handle(_ payload: WatchSyncPayloadDTO) {
-        guard case .setCompletion(let event) = payload else {
-            return
-        }
-
         DispatchQueue.main.async { [weak self] in
             guard let self else {
                 return
             }
 
-            guard self.deduplicator.shouldAccept(event) else {
+            switch payload {
+            case .setCompletion(let event):
+                guard self.deduplicator.shouldAccept(event) else {
+                    return
+                }
+
+                self.lastReceivedSetCompletion = event
+                self.onSetCompletion?(event)
+            case .restAdjustment(let event):
+                self.lastReceivedRestAdjustment = event
+                self.onRestAdjustment?(event)
+            case .syncRequest(let event):
+                self.lastReceivedSyncRequest = event
+                self.onSyncRequest?(event)
+            case .activeWorkout, .routines, .history, .fullSnapshot:
                 return
             }
-
-            self.lastReceivedSetCompletion = event
-            self.onSetCompletion?(event)
         }
     }
 

@@ -65,7 +65,7 @@ public struct RoutineSetTarget: Identifiable, Codable, Equatable, Sendable {
         orderIndex: Int,
         targetWeightKg: Double? = nil,
         targetRepetitions: Int? = nil,
-        restSeconds: Int = 90
+        restSeconds: Int = ExerciseSeedService.defaultRestSeconds
     ) {
         self.id = id
         self.orderIndex = orderIndex

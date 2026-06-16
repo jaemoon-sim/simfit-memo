@@ -1,33 +1,41 @@
 import SwiftUI
+import WatchKit
 
 struct CurrentWorkoutView: View {
     @EnvironmentObject private var watchSyncService: WatchSyncService
     @EnvironmentObject private var heartRateService: HealthKitHeartRateService
+    @State private var restCountdownCueTracker = RestCountdownCueTracker()
 
     private let restTimerCalculator = RestTimerCalculator()
 
-    private var displayState: ActiveWorkoutState {
-        watchSyncService.activeWorkoutSnapshot?.state ?? WatchMockData.activeWorkoutState
+    private var displayState: ActiveWorkoutState? {
+        watchSyncService.activeWorkoutSnapshot?.state
     }
 
     var body: some View {
         TimelineView(.periodic(from: .now, by: 1)) { timeline in
             let state = displayState
-            let context = state.displayContext
+            let context = state?.displayContext
+            let remainingRestSeconds = restTimerCalculator.remainingSeconds(
+                restEndAt: state?.restEndAt,
+                now: timeline.date
+            )
 
             ScrollView {
                 VStack(alignment: .leading, spacing: 10) {
-                    header(for: state)
-
-                    if let context {
-                        exerciseSummary(context)
-                        restTimer(state: state, context: context, now: timeline.date)
-                        heartRateSummary
-                        completionButton(state: state)
+                    if let state, remainingRestSeconds > 0 {
+                        restContent(
+                            state: state,
+                            nextContext: context,
+                            remainingSeconds: remainingRestSeconds
+                        )
+                    } else if let state, let context {
+                        workoutContent(state: state, context: context)
                     } else {
                         EmptyWorkoutStateView()
                     }
 
+                    manualSyncButton
                     deliveryStatus
                 }
                 .padding(.vertical, 8)
@@ -42,21 +50,12 @@ struct CurrentWorkoutView: View {
         }
     }
 
-    private func header(for state: ActiveWorkoutState) -> some View {
-        VStack(alignment: .leading, spacing: 2) {
-            Text(state.routineName ?? "진행 중인 운동")
+    private func workoutContent(state: ActiveWorkoutState, context: WorkoutDisplayContext) -> some View {
+        VStack(alignment: .leading, spacing: 8) {
+            Text("현재 운동")
                 .font(.caption)
                 .foregroundStyle(WatchTheme.secondaryText)
-                .lineLimit(1)
 
-            Text("현재 운동")
-                .font(.headline)
-                .foregroundStyle(WatchTheme.primaryText)
-        }
-    }
-
-    private func exerciseSummary(_ context: WorkoutDisplayContext) -> some View {
-        VStack(alignment: .leading, spacing: 8) {
             Text(context.exercise.exerciseName)
                 .font(.system(size: 18, weight: .bold))
                 .foregroundStyle(WatchTheme.primaryText)
@@ -67,33 +66,124 @@ struct CurrentWorkoutView: View {
                 MetricPill(title: "세트", value: "\(context.setNumber)/\(context.totalSets)")
                 MetricPill(title: "목표", value: context.targetText)
             }
+
+            heartRateSummary
+            completionButton(state: state)
         }
+    }
+
+    private func restContent(
+        state: ActiveWorkoutState,
+        nextContext: WorkoutDisplayContext?,
+        remainingSeconds: Int
+    ) -> some View {
+        let cueSnapshot = RestCountdownCueSnapshot(
+            restStartedAt: state.restStartedAt ?? state.restEndAt,
+            remainingSeconds: remainingSeconds
+        )
+
+        return VStack(alignment: .leading, spacing: 10) {
+            VStack(alignment: .leading, spacing: 4) {
+                Text("휴식중")
+                    .font(.caption)
+                    .foregroundStyle(WatchTheme.secondaryText)
+
+                Text(format(seconds: remainingSeconds))
+                    .font(.system(size: 38, weight: .bold, design: .rounded))
+                    .foregroundStyle(WatchTheme.primaryBlue)
+                    .monospacedDigit()
+                    .minimumScaleFactor(0.75)
+            }
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .padding(10)
+            .background(WatchTheme.surface)
+            .clipShape(RoundedRectangle(cornerRadius: 8))
+
+            HStack(spacing: 6) {
+                restAdjustmentButton(title: "-10s", deltaSeconds: -10, state: state, isEnabled: remainingSeconds > 0)
+                restAdjustmentButton(title: "+10s", deltaSeconds: 10, state: state, isEnabled: remainingSeconds > 0)
+            }
+
+            nextWorkoutGuide(nextContext)
+            restCompleteButton(state: state, remainingSeconds: remainingSeconds)
+        }
+        .onAppear {
+            playRestCountdownCues(for: cueSnapshot)
+        }
+        .onChange(of: cueSnapshot) { _, cueSnapshot in
+            playRestCountdownCues(for: cueSnapshot)
+        }
+    }
+
+    @ViewBuilder
+    private func nextWorkoutGuide(_ context: WorkoutDisplayContext?) -> some View {
+        VStack(alignment: .leading, spacing: 6) {
+            Text("다음 운동")
+                .font(.caption2)
+                .foregroundStyle(WatchTheme.secondaryText)
+
+            if let context {
+                Text(context.exercise.exerciseName)
+                    .font(.system(size: 16, weight: .bold))
+                    .foregroundStyle(WatchTheme.primaryText)
+                    .lineLimit(2)
+                    .minimumScaleFactor(0.75)
+
+                Text("\(context.setNumber)/\(context.totalSets)세트 · 목표 \(context.targetText)")
+                    .font(.caption)
+                    .foregroundStyle(WatchTheme.secondaryText)
+                    .lineLimit(2)
+            } else {
+                Text("다음 운동 없음")
+                    .font(.system(size: 16, weight: .bold))
+                    .foregroundStyle(WatchTheme.primaryText)
+
+                Text("모든 세트를 완료했어요.")
+                    .font(.caption)
+                    .foregroundStyle(WatchTheme.secondaryText)
+            }
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
         .padding(10)
         .background(WatchTheme.surface)
         .clipShape(RoundedRectangle(cornerRadius: 8))
     }
 
-    private func restTimer(state: ActiveWorkoutState, context: WorkoutDisplayContext, now: Date) -> some View {
-        let restEndAt = state.restEndAt ?? context.set.completedAt.map {
-            restTimerCalculator.restEndDate(startedAt: $0, restSeconds: context.set.restSeconds)
+    private func playRestCountdownCues(for snapshot: RestCountdownCueSnapshot) {
+        for cue in restCountdownCueTracker.cues(for: snapshot) {
+            WatchRestCountdownNotifier.play(cue)
         }
-        let remaining = restTimerCalculator.remainingSeconds(restEndAt: restEndAt, now: now)
+    }
 
-        return VStack(alignment: .leading, spacing: 2) {
-            Text(remaining > 0 ? "휴식" : "다음 세트")
-                .font(.caption2)
-                .foregroundStyle(WatchTheme.secondaryText)
-
-            Text(remaining > 0 ? format(seconds: remaining) : "준비 완료")
-                .font(.system(size: 32, weight: .bold, design: .rounded))
-                .foregroundStyle(WatchTheme.primaryBlue)
-                .monospacedDigit()
-                .minimumScaleFactor(0.75)
+    private func restAdjustmentButton(
+        title: String,
+        deltaSeconds: Int,
+        state: ActiveWorkoutState,
+        isEnabled: Bool
+    ) -> some View {
+        Button {
+            _ = watchSyncService.sendRestAdjustment(for: state, deltaSeconds: deltaSeconds)
+        } label: {
+            Text(title)
+                .font(.system(size: 13, weight: .bold, design: .rounded))
+                .frame(maxWidth: .infinity)
         }
-        .frame(maxWidth: .infinity, alignment: .leading)
-        .padding(10)
-        .background(WatchTheme.elevatedSurface)
-        .clipShape(RoundedRectangle(cornerRadius: 8))
+        .buttonStyle(.bordered)
+        .tint(deltaSeconds < 0 ? WatchTheme.secondaryText : WatchTheme.primaryBlue)
+        .disabled(!isEnabled)
+    }
+
+    private func restCompleteButton(state: ActiveWorkoutState, remainingSeconds: Int) -> some View {
+        Button {
+            _ = watchSyncService.sendRestAdjustment(for: state, deltaSeconds: -remainingSeconds)
+        } label: {
+            Text("휴식 완료")
+                .font(.system(size: 15, weight: .bold))
+                .frame(maxWidth: .infinity)
+        }
+        .buttonStyle(.borderedProminent)
+        .tint(WatchTheme.primaryBlue)
+        .disabled(remainingSeconds <= 0)
     }
 
     private var heartRateSummary: some View {
@@ -131,6 +221,18 @@ struct CurrentWorkoutView: View {
         .disabled(state.displayContext == nil)
     }
 
+    private var manualSyncButton: some View {
+        Button {
+            _ = watchSyncService.requestSync()
+        } label: {
+            Label("동기화", systemImage: "arrow.triangle.2.circlepath")
+                .font(.system(size: 13, weight: .bold))
+                .frame(maxWidth: .infinity)
+        }
+        .buttonStyle(.bordered)
+        .tint(WatchTheme.primaryBlue)
+    }
+
     private var deliveryStatus: some View {
         Group {
             if let result = watchSyncService.lastDeliveryResult {
@@ -154,6 +256,17 @@ struct CurrentWorkoutView: View {
         let minutes = seconds / 60
         let seconds = seconds % 60
         return String(format: "%d:%02d", minutes, seconds)
+    }
+}
+
+@MainActor
+private enum WatchRestCountdownNotifier {
+    static func play(_ cue: RestCountdownCue) {
+        switch cue {
+        case .tenSeconds, .finalCountdown:
+            HeadsetOnlyBeepPlayer.playBeep()
+            WKInterfaceDevice.current().play(.notification)
+        }
     }
 }
 

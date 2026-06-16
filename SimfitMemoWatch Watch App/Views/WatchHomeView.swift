@@ -50,6 +50,14 @@ struct WatchHomeView: View {
                                 .foregroundStyle(WatchTheme.secondaryText)
                         }
                     }
+
+                    Button {
+                        _ = watchSyncService.requestSync()
+                    } label: {
+                        Label("동기화", systemImage: "arrow.triangle.2.circlepath")
+                    }
+                    .buttonStyle(.borderedProminent)
+                    .tint(WatchTheme.primaryBlue)
                 }
             }
             .navigationTitle("SimfitMemo")
@@ -59,8 +67,11 @@ struct WatchHomeView: View {
     }
 
     private var currentWorkoutSubtitle: String {
-        let state = watchSyncService.activeWorkoutSnapshot?.state ?? WatchMockData.activeWorkoutState
-        return state.routineName ?? "동기화 대기"
+        guard let state = watchSyncService.activeWorkoutSnapshot?.state else {
+            return "진행 중인 운동 없음"
+        }
+
+        return state.routineName ?? "자유 운동 진행 중"
     }
 
     private var routineCount: Int {

@@ -17,7 +17,7 @@ public protocol ExerciseSeedImporting: Sendable {
 }
 
 public struct ExerciseSeedService: Sendable {
-    public static let defaultRestSeconds = 90
+    public static let defaultRestSeconds = 60
 
     public static let sourceMetadata = ExerciseSeedSourceMetadata(
         sourceName: "Free Exercise DB",
