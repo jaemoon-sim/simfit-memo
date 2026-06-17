@@ -196,7 +196,10 @@ struct WorkoutMemoView: View {
                     .font(.system(size: 16, weight: .bold))
                     .foregroundStyle(AppTheme.primaryText)
 
-                Text(latestWatchTransferResult?.phoneDisplayText ?? "현재 운동 상태를 워치로 보냅니다")
+                Text(
+                    latestWatchTransferResult?.phoneDisplayText(connectionState: watchSyncService.connectionState)
+                    ?? watchSyncService.connectionState.phoneIdleText
+                )
                     .font(.system(size: 13, weight: .medium))
                     .foregroundStyle(AppTheme.secondaryText)
                     .lineLimit(2)
@@ -223,6 +226,7 @@ struct WorkoutMemoView: View {
     }
 
     private func sendCurrentStateToWatch() {
+        watchSyncService.activate()
         latestWatchTransferResult = watchSyncService.sendFullSnapshot(
             activeWorkout: appStore.activeWorkout,
             routines: appStore.routines,
@@ -384,7 +388,7 @@ private struct FinishedWorkoutAlert: Identifiable {
 }
 
 private extension WatchSyncDeliveryResult {
-    var phoneDisplayText: String {
+    func phoneDisplayText(connectionState: WatchSyncConnectionState) -> String {
         switch self {
         case .sentLive:
             return "워치로 즉시 전송했습니다"
@@ -393,9 +397,49 @@ private extension WatchSyncDeliveryResult {
         case .queuedUserInfo:
             return "연결되면 워치로 전송됩니다"
         case .unavailable:
-            return "워치 연결을 확인해주세요"
-        case .failed:
-            return "전송에 실패했습니다"
+            return connectionState.unavailableDisplayText
+        case .failed(let message):
+            return "전송 실패: \(message)"
+        }
+    }
+}
+
+private extension WatchSyncConnectionState {
+    var phoneIdleText: String {
+        switch self {
+        case .unavailable:
+            return "이 기기에서 Watch 동기화를 사용할 수 없어요"
+        case .inactive:
+            return "Watch 연결 준비 중입니다"
+        case .activated:
+            return "전송 가능: 워치가 열리면 반영됩니다"
+        case .reachable:
+            return "전송 가능: 워치로 즉시 보낼 수 있어요"
+        case .notPaired:
+            return "페어링된 Apple Watch가 없습니다"
+        case .watchAppNotInstalled:
+            return "워치 앱 설치 상태를 확인해주세요"
+        case .failed(let message):
+            return "Watch 연결 오류: \(message)"
+        }
+    }
+
+    var unavailableDisplayText: String {
+        switch self {
+        case .notPaired:
+            return "페어링된 Apple Watch가 없습니다"
+        case .watchAppNotInstalled:
+            return "워치 앱이 설치되지 않은 것으로 인식됩니다"
+        case .unavailable:
+            return "WatchConnectivity를 사용할 수 없어요"
+        case .inactive:
+            return "Watch 연결 준비 중입니다. 잠시 후 다시 시도해주세요"
+        case .failed(let message):
+            return "Watch 연결 오류: \(message)"
+        case .activated:
+            return "워치가 바로 응답하지 않아 백그라운드 전송이 필요합니다"
+        case .reachable:
+            return "워치 연결 상태를 다시 확인해주세요"
         }
     }
 }
